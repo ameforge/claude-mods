@@ -239,6 +239,82 @@ const baseTitle = (title: string) => {
   return base;
 };
 
+// A ticket key in the name ("app-ticket-abc-101") becomes the whole base,
+// upper-cased: ABC-101.
+// shortcut: any word-dash-number counts (utf-8 too), tighten if a name trips it.
+const TICKET_KEY = /(?<![a-z0-9])[a-z][a-z0-9]+-\d+(?!\d)/i;
+
+const stampedTitle = (title: string, ms: number) => {
+  const base = baseTitle(title);
+  const key = TICKET_KEY.exec(base)?.[0].toUpperCase();
+  return `${key ?? base}_${titleStamp(ms)}`;
+};
+
+// Upper-case KEY-123 shapes that are standards, not Jira tickets.
+const NOT_TICKET = /^(?:CVE|HTTP|ISO|RFC|SHA|TLS|UTF)-/;
+
+// The Jira key the transcript names most, the first seen on a tie: the ticket
+// the conversation is about.
+// shortcut: any other upper-case KEY-123 counts too, extend NOT_TICKET if one wins.
+const transcriptTicket = async ($: EngineInterface) => {
+  try {
+    const found = await $.process.run([
+      "grep",
+      "-o",
+      "-E",
+      "[A-Z][A-Z0-9]+-[0-9]+",
+      await transcriptPath($),
+    ]);
+    const counts = new Map<string, number>();
+    for (const key of found.stdout.split("\n")) {
+      if (key.trim() !== "" && !NOT_TICKET.test(key))
+        counts.set(key.trim(), (counts.get(key.trim()) ?? 0) + 1);
+    }
+    let ticket: string | undefined;
+    let most = 0;
+    for (const [key, count] of counts) {
+      if (count > most) {
+        ticket = key;
+        most = count;
+      }
+    }
+    return ticket;
+  } catch {
+    return undefined;
+  }
+};
+
+// The name to stamp: the ticket the conversation names, else the session's
+// name; /rename with no name lets Claude Code pick one when it has neither.
+const nameSession = async ($: EngineInterface) => {
+  const ticket = await transcriptTicket($);
+  if (ticket !== undefined) return ticket;
+  const title = await sessionTitle($);
+  if (title !== undefined) return title;
+  try {
+    await $.command.run({command: "rename"});
+    return await sessionTitle($);
+  } catch (error) {
+    $.ui.log(
+      `cache-handoff: could not name the conversation: ${errorText(error)}`,
+    );
+    return undefined;
+  }
+};
+
+// /handoff rename [name]: the name, or the current one, with a fresh stamp.
+const renameStamped = async ($: EngineInterface, name: string) => {
+  const title = name !== "" ? name : await nameSession($);
+  if (title === undefined) {
+    $.ui.toast("cache-handoff: the conversation has no name to stamp.");
+    return;
+  }
+  await $.command.run({
+    args: stampedTitle(title, await $.clock.now()),
+    command: "rename",
+  });
+};
+
 const coldNotice = (coldAt: number, stored: StoredHandoff | undefined) => {
   const cold = `Cache went cold at ${clockTime(coldAt)}`;
   if (stored === undefined) {
@@ -263,19 +339,9 @@ const startFromHandoff = async (
   now: number,
 ) => {
   const oldId = await $.session.id();
-  let title = await sessionTitle($);
-  if (title === undefined) {
-    // /rename with no name lets Claude Code name the old conversation from
-    // its content, so the new one gets a name worth recognising.
-    try {
-      await $.command.run({command: "rename"});
-      title = await sessionTitle($);
-    } catch (error) {
-      $.ui.log(
-        `cache-handoff: could not name the old conversation: ${errorText(error)}`,
-      );
-    }
-  }
+  // Named before the clear, so the new conversation gets a name worth
+  // recognising.
+  const title = await nameSession($);
   await $.command.run({command: "clear"});
   idle.transcriptPath = undefined;
   idle.lastTurnEndAt = undefined;
@@ -291,7 +357,7 @@ const startFromHandoff = async (
     // refused rename only leaves it unnamed.
     try {
       await $.command.run({
-        args: `${baseTitle(title)}_${titleStamp(now)}`,
+        args: stampedTitle(title, now),
         command: "rename",
       });
     } catch (error) {
@@ -428,6 +494,16 @@ const ensurePoller = async ($: EngineInterface) => {
 };
 
 const handoffCommand = async ($: EngineInterface, args: string) => {
+  const rename = /^rename(?:\s+(.*))?$/is.exec(args.trim());
+  if (rename !== null) {
+    // $.command.run waits for the session to be idle, so this runs just after.
+    $.clock.after(0, () => {
+      renameStamped($, rename[1]?.trim() ?? "").catch((error) =>
+        $.ui.toast(`cache-handoff: could not rename: ${errorText(error)}`),
+      );
+    });
+    return "Renaming the conversation with a timestamp.";
+  }
   const word = args.trim().toLowerCase();
   if (word === "off") {
     idle.isDisabled = true;
@@ -469,7 +545,7 @@ const handoffCommand = async ($: EngineInterface, args: string) => {
     stored === undefined
       ? "No handoff stored."
       : `Handoff from ${clockTime(stored.writtenAt)} stored.`;
-  return `cache-handoff: ${state}. ${handoff} coldAction: ${config.coldAction}. Usage: /${config.command} off | on | now`;
+  return `cache-handoff: ${state}. ${handoff} coldAction: ${config.coldAction}. Usage: /${config.command} off | on | now | rename [name]`;
 };
 
 export const register: Register = (on, options) => {
@@ -487,9 +563,9 @@ export const register: Register = (on, options) => {
       6 * MINUTE_MS,
     );
     const spec = {
-      argumentHint: "off | on | now",
+      argumentHint: "off | on | now | rename [name]",
       description:
-        "Cache handoff: off, on, or now to continue from the handoff",
+        "Cache handoff: off, on, now to continue from the handoff, or rename with a timestamp",
     };
     // A refused name must not stop the rest of session.start.
     try {

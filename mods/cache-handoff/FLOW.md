@@ -79,12 +79,13 @@ flowchart TD
 
 ## The /handoff command
 
-| Command        | Effect                                                                                                                                                                           |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/handoff`     | Show the state. In a new conversation waiting for its first prompt, print the handoff that prompt will carry.                                                                    |
-| `/handoff off` | Disarm the mod for this session.                                                                                                                                                 |
-| `/handoff on`  | Arm it again from the next turn.                                                                                                                                                 |
-| `/handoff now` | Open the new conversation from the stored handoff right away. This also covers a session resumed with `claude --resume` after Claude Code was closed before the cache went cold. |
+| Command                  | Effect                                                                                                                                                                                                                                                                       |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/handoff`               | Show the state. In a new conversation waiting for its first prompt, print the handoff that prompt will carry.                                                                                                                                                                |
+| `/handoff off`           | Disarm the mod for this session.                                                                                                                                                                                                                                             |
+| `/handoff on`            | Arm it again from the next turn.                                                                                                                                                                                                                                             |
+| `/handoff now`           | Open the new conversation from the stored handoff right away. This also covers a session resumed with `claude --resume` after Claude Code was closed before the cache went cold.                                                                                             |
+| `/handoff rename [name]` | `/rename` to `<name>_YYYYMMDD_HHMMSS`, or the current name with a fresh stamp; an unnamed conversation is first named by `/rename` with no name. A name holding a ticket key (`app-ticket-abc-101`) keeps only the key, upper-cased (`ABC-101`), here and at [114m]. |
 
 ## Settings
 
