@@ -20,9 +20,9 @@ Live checks:
                                      for another 1h; the conversation is unchanged)
                                      reply NO_HANDOFF: nothing saved, nothing at cold
                                      otherwise: handoff saved to $.store under the session id
- [114m]    step 2: apply (new)       read the old conversation's name
+ [114m]    step 2: apply (new)       name: the Jira key mentioned most, else the old conversation's name
                                      /clear  ->  new conversation
-                                     /rename "<old name>_YYYYMMDD_HHMMSS" (an unnamed one is first named by /rename)
+                                     /rename "<name>_YYYYMMDD_HHMMSS" (an unnamed one is first named by /rename)
                                      (a stamp from an earlier handoff is replaced, not stacked)
                                      status line: new conversation from the handoff
  [later]   you type a prompt         prompt = <handoff> + resume line + your text, once
@@ -79,13 +79,13 @@ flowchart TD
 
 ## The /handoff command
 
-| Command                  | Effect                                                                                                                                                                                                                                                                       |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/handoff`               | Show the state. In a new conversation waiting for its first prompt, print the handoff that prompt will carry.                                                                                                                                                                |
-| `/handoff off`           | Disarm the mod for this session.                                                                                                                                                                                                                                             |
-| `/handoff on`            | Arm it again from the next turn.                                                                                                                                                                                                                                             |
-| `/handoff now`           | Open the new conversation from the stored handoff right away. This also covers a session resumed with `claude --resume` after Claude Code was closed before the cache went cold.                                                                                             |
-| `/handoff rename [name]` | `/rename` to `<name>_YYYYMMDD_HHMMSS`, or the current name with a fresh stamp; an unnamed conversation is first named by `/rename` with no name. A name holding a ticket key (`app-ticket-abc-101`) keeps only the key, upper-cased (`ABC-101`), here and at [114m]. |
+| Command                  | Effect                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/handoff`               | Show the state. In a new conversation waiting for its first prompt, print the handoff that prompt will carry.                                                                                                                                                                                                                                                                                         |
+| `/handoff off`           | Disarm the mod for this session.                                                                                                                                                                                                                                                                                                                                                                      |
+| `/handoff on`            | Arm it again from the next turn.                                                                                                                                                                                                                                                                                                                                                                      |
+| `/handoff now`           | Open the new conversation from the stored handoff right away. This also covers a session resumed with `claude --resume` after Claude Code was closed before the cache went cold.                                                                                                                                                                                                                      |
+| `/handoff rename [name]` | `/rename` to `<name>_YYYYMMDD_HHMMSS`, or with no name: the Jira key the transcript mentions most (`grep -o`, first seen on a tie, `UTF-8` and similar standards skipped), else the current name, else one `/rename` with no name picks. The same name is used at [114m]. A name holding a ticket key (`app-ticket-abc-101`) keeps only the key, upper-cased (`ABC-101`), here and at [114m]. |
 
 ## Settings
 
