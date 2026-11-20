@@ -253,22 +253,41 @@ const stampedTitle = (title: string, ms: number) => {
 // Upper-case KEY-123 shapes that are standards, not Jira tickets.
 const NOT_TICKET = /^(?:CVE|HTTP|ISO|RFC|SHA|TLS|UTF)-/;
 
-// The Jira key the transcript names most, the first seen on a tie: the ticket
-// the conversation is about.
+const KEY = /[A-Z][A-Z0-9]+-[0-9]+/g;
+
+// Whether a transcript row is the conversation itself: prompts, replies and
+// tool results. Injected rows (CLAUDE.md attachments, request blobs, meta
+// reminders, /rename echoes) are skipped, so an example key in the user's
+// instructions or an earlier stamp does not name the ticket.
+const isConversationRow = (row: string) => {
+  try {
+    const entry = JSON.parse(row);
+    return (
+      (entry.type === "user" || entry.type === "assistant") &&
+      entry.isMeta !== true
+    );
+  } catch {
+    return false;
+  }
+};
+
+// The Jira key the conversation names most, the first seen on a tie: the
+// ticket the conversation is about.
 // shortcut: any other upper-case KEY-123 counts too, extend NOT_TICKET if one wins.
 const transcriptTicket = async ($: EngineInterface) => {
   try {
     const found = await $.process.run([
       "grep",
-      "-o",
       "-E",
-      "[A-Z][A-Z0-9]+-[0-9]+",
+      KEY.source,
       await transcriptPath($),
     ]);
     const counts = new Map<string, number>();
-    for (const key of found.stdout.split("\n")) {
-      if (key.trim() !== "" && !NOT_TICKET.test(key))
-        counts.set(key.trim(), (counts.get(key.trim()) ?? 0) + 1);
+    for (const row of found.stdout.split("\n")) {
+      if (!isConversationRow(row)) continue;
+      for (const [key] of row.matchAll(KEY)) {
+        if (!NOT_TICKET.test(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
     }
     let ticket: string | undefined;
     let most = 0;

@@ -10,8 +10,10 @@ const typed = {
 
 type EngineOptions = {
   title?: string;
-  // What grep -o finds for ticket keys in the transcript, in order.
+  // Ticket keys in the conversation's own rows, in order.
   transcriptKeys?: string[];
+  // Ticket keys only in injected rows, such as a CLAUDE.md attachment.
+  instructionKeys?: string[];
   isCommandRefused?: boolean;
   refusedCommand?: string;
   // A command name another plugin already owns.
@@ -97,8 +99,15 @@ const engine = (
   on("store.keys", () => ({value: [...store.keys()]}));
   on("process.run", (_$, e) => {
     const stdout =
-      e.argv[0] === "grep" && e.argv.includes("-o")
-        ? (options.transcriptKeys ?? []).join("\n")
+      e.argv[0] === "grep" && e.argv.includes("-E")
+        ? [
+            ...(options.transcriptKeys ?? []).map((key) =>
+              JSON.stringify({message: {content: key}, type: "user"}),
+            ),
+            ...(options.instructionKeys ?? []).map((key) =>
+              JSON.stringify({content: key, type: "attachment"}),
+            ),
+          ].join("\n")
         : e.argv[0] === "grep"
           ? JSON.stringify({customTitle: currentTitle, type: "custom-title"})
           : typeof tail === "string"
@@ -511,6 +520,23 @@ test("/handoff rename names the ticket the conversation mentions most, without a
   await clock.advance(1);
   expect(commands).toHaveLength(1);
   expect(commands[0]).toMatch(/^rename ABC-202_\d{8}_\d{6}$/);
+});
+
+test("/handoff rename ignores a ticket key that only the injected instructions name", async ($, on) => {
+  const clock = mock.clock(on);
+  const {commands} = engine(on, cacheWrite("1h"), {
+    instructionKeys: ["ABC-505", "ABC-505", "ABC-505"],
+    title: "My work",
+    transcriptKeys: [],
+  });
+  await $.session.start({
+    cwd: "D:/ws/demo",
+    isInteractive: true,
+    surface: null,
+  });
+  await $.command.run({args: "rename", command: "handoff", ...typed});
+  await clock.advance(1);
+  expect(commands[commands.length - 1]).toMatch(/^rename My work_\d{8}_\d{6}$/);
 });
 
 test("the cold handoff names the new conversation after the ticket too", async ($, on) => {
