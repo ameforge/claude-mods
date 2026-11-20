@@ -255,19 +255,21 @@ const NOT_TICKET = /^(?:CVE|HTTP|ISO|RFC|SHA|TLS|UTF)-/;
 
 const KEY = /[A-Z][A-Z0-9]+-[0-9]+/g;
 
-// Whether a transcript row is the conversation itself: prompts, replies and
-// tool results. Injected rows (CLAUDE.md attachments, request blobs, meta
-// reminders, /rename echoes) are skipped, so an example key in the user's
-// instructions or an earlier stamp does not name the ticket.
-const isConversationRow = (row: string) => {
+// The message of a transcript row that is the conversation itself: prompts,
+// replies and tool results. Injected rows (CLAUDE.md attachments, request
+// blobs, meta reminders, /rename echoes) are skipped, so an example key in the
+// user's instructions or an earlier stamp does not name the ticket. Only the
+// message counts: every row repeats metadata such as the git branch, which
+// would otherwise outvote the ticket the conversation is about.
+const conversationText = (row: string) => {
   try {
     const entry = JSON.parse(row);
-    return (
-      (entry.type === "user" || entry.type === "assistant") &&
+    return (entry.type === "user" || entry.type === "assistant") &&
       entry.isMeta !== true
-    );
+      ? JSON.stringify(entry.message ?? "")
+      : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 };
 
@@ -284,8 +286,9 @@ const transcriptTicket = async ($: EngineInterface) => {
     ]);
     const counts = new Map<string, number>();
     for (const row of found.stdout.split("\n")) {
-      if (!isConversationRow(row)) continue;
-      for (const [key] of row.matchAll(KEY)) {
+      const text = conversationText(row);
+      if (text === undefined) continue;
+      for (const [key] of text.matchAll(KEY)) {
         if (!NOT_TICKET.test(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     }

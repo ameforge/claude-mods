@@ -14,6 +14,8 @@ type EngineOptions = {
   transcriptKeys?: string[];
   // Ticket keys only in injected rows, such as a CLAUDE.md attachment.
   instructionKeys?: string[];
+  // The git branch every conversation row records as metadata.
+  gitBranch?: string;
   isCommandRefused?: boolean;
   refusedCommand?: string;
   // A command name another plugin already owns.
@@ -102,7 +104,11 @@ const engine = (
       e.argv[0] === "grep" && e.argv.includes("-E")
         ? [
             ...(options.transcriptKeys ?? []).map((key) =>
-              JSON.stringify({message: {content: key}, type: "user"}),
+              JSON.stringify({
+                gitBranch: options.gitBranch,
+                message: {content: key},
+                type: "user",
+              }),
             ),
             ...(options.instructionKeys ?? []).map((key) =>
               JSON.stringify({content: key, type: "attachment"}),
@@ -537,6 +543,23 @@ test("/handoff rename ignores a ticket key that only the injected instructions n
   await $.command.run({args: "rename", command: "handoff", ...typed});
   await clock.advance(1);
   expect(commands[commands.length - 1]).toMatch(/^rename My work_\d{8}_\d{6}$/);
+});
+
+test("/handoff rename ignores the ticket in the git branch every row records", async ($, on) => {
+  const clock = mock.clock(on);
+  const {commands} = engine(on, cacheWrite("1h"), {
+    gitBranch: "fix/ABC-606",
+    title: "",
+    transcriptKeys: ["ABC-707", "ABC-707"],
+  });
+  await $.session.start({
+    cwd: "D:/ws/demo",
+    isInteractive: true,
+    surface: null,
+  });
+  await $.command.run({args: "rename", command: "handoff", ...typed});
+  await clock.advance(1);
+  expect(commands[0]).toMatch(/^rename ABC-707_\d{8}_\d{6}$/);
 });
 
 test("the cold handoff names the new conversation after the ticket too", async ($, on) => {
