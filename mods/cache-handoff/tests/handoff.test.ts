@@ -28,6 +28,22 @@ type EngineOptions = {
   duringFork?: () => Promise<void>;
 };
 
+// rg over `transcript` as the mod runs it: the rows matching `-e`, or with
+// `-n -o` each match as `<row>:<match>`.
+const rg = (argv: readonly string[], transcript: string) => {
+  const pattern = new RegExp(String(argv[argv.indexOf("-e") + 1]), "g");
+  return transcript
+    .split("\n")
+    .flatMap((row, i) =>
+      argv.includes("-o")
+        ? [...row.matchAll(pattern)].map(([match]) => `${i + 1}:${match}`)
+        : row.match(pattern)
+          ? [row]
+          : [],
+    )
+    .join("\n");
+};
+
 // The engine beneath the mod: one session titled `title`, a transcript tail of
 // `tail` (or what it returns at each read); the store, status lines, slash commands and the prompts that reach
 // the model are collected.
@@ -100,32 +116,27 @@ const engine = (
   });
   on("store.keys", () => ({value: [...store.keys()]}));
   on("process.run", (_$, e) => {
-    const stdout =
-      e.argv[0] === "grep" && e.argv.includes("-E")
-        ? [
-            ...(options.transcriptKeys ?? []).map((key) =>
-              JSON.stringify({
-                gitBranch: options.gitBranch,
-                message: {content: key},
-                type: "user",
-              }),
-            ),
-            ...(options.instructionKeys ?? []).map((key) =>
-              JSON.stringify({content: key, type: "attachment"}),
-            ),
-          ].join("\n")
-        : e.argv[0] === "grep"
-          ? JSON.stringify({customTitle: currentTitle, type: "custom-title"})
-          : typeof tail === "string"
-            ? tail
-            : tail();
+    const transcript = [
+      ...(options.transcriptKeys ?? []).map((key) =>
+        JSON.stringify({
+          gitBranch: options.gitBranch,
+          message: {content: key},
+          type: "user",
+        }),
+      ),
+      ...(options.instructionKeys ?? []).map((key) =>
+        JSON.stringify({content: key, type: "attachment"}),
+      ),
+      JSON.stringify({customTitle: currentTitle, type: "custom-title"}),
+      typeof tail === "string" ? tail : tail(),
+    ].join("\n");
     return {
       value: {
         exitCode: 0,
         isStderrTruncated: false,
         isStdoutTruncated: false,
         stderr: "",
-        stdout,
+        stdout: rg(e.argv, transcript),
       },
     };
   });
@@ -332,6 +343,17 @@ test("does nothing at all on the 5 minute cache tier", async ($, on) => {
   expect(forks.length).toBe(0);
   expect(store.size).toBe(0);
   expect(commands.length).toBe(0);
+  expect(statuses.length).toBe(0);
+});
+
+test("a subagent's newer 1h write does not hide the main thread's 5m tier", async ($, on) => {
+  const clock = mock.clock(on);
+  const sidechain = cacheWrite("1h").replace("{", '{"isSidechain":true,');
+  const {forks, statuses} = engine(on, `${cacheWrite("5m")}\n${sidechain}`);
+  await oneTurn($);
+
+  await clock.advance(2 * 60 * MINUTE);
+  expect(forks.length).toBe(0);
   expect(statuses.length).toBe(0);
 });
 

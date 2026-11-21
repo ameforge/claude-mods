@@ -96,18 +96,18 @@ flowchart TD
 
 ## What each step touches
 
-| Step                                            | Mod API                                              | External                                                                                         |
-| ----------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Arm and track idle                              | `turn.complete`, `turn.start` hooks, `$.clock.every` | none                                                                                             |
-| Context threshold                               | `$.session.usage()`                                  | none                                                                                             |
-| Find cache tier, at turn end and again at [54m] | `$.process.run(['tail', ...])`, else `$.fs.read`     | session transcript `.jsonl`, its path from `classic.Stop` or derived from the cwd and session id |
-| Write handoff                                   | `$.model.fork`                                       | none                                                                                             |
-| Keep handoff                                    | `$.store`                                            | none, local to Claude Code                                                                       |
-| Read old name                                   | `$.process.run(['grep', ...])`                       | transcript `custom-title` rows                                                                   |
-| New conversation                                | `$.command.run` for `clear` and `rename`             | none                                                                                             |
-| Carry the handoff                               | `prompt.submit` hook, typed prompts only             | none                                                                                             |
-| Command                                         | `$.command.register`, `command.run` hook             | none                                                                                             |
-| Reminder                                        | `$.ui.status`                                        | none                                                                                             |
+| Step                                            | Mod API                                                    | External                                                                                         |
+| ----------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Arm and track idle                              | `turn.complete`, `turn.start` hooks, `$.clock.every`       | none                                                                                             |
+| Context threshold                               | `$.session.usage()`                                        | none                                                                                             |
+| Find cache tier, at turn end and again at [54m] | `$.process.run(['rg', '-n', '-o', ...])`, else `$.fs.read` | session transcript `.jsonl`, its path from `classic.Stop` or derived from the cwd and session id |
+| Write handoff                                   | `$.model.fork`                                             | none                                                                                             |
+| Keep handoff                                    | `$.store`                                                  | none, local to Claude Code                                                                       |
+| Read old name                                   | `$.process.run(['rg', ...])`, else `$.fs.read`             | transcript `custom-title` rows                                                                   |
+| New conversation                                | `$.command.run` for `clear` and `rename`                   | none                                                                                             |
+| Carry the handoff                               | `prompt.submit` hook, typed prompts only                   | none                                                                                             |
+| Command                                         | `$.command.register`, `command.run` hook                   | none                                                                                             |
+| Reminder                                        | `$.ui.status`                                              | none                                                                                             |
 
 ## Limits
 

@@ -140,19 +140,71 @@ const transcriptPath = async ($: EngineInterface) => {
   return `${await homeDir($)}/.claude/projects/${project}/${await $.session.id()}.jsonl`;
 };
 
-const readTier = async ($: EngineInterface): Promise<CacheTier> => {
+// The transcript rows that match `pattern`. rg reads a transcript of any size
+// on Windows, macOS and Linux alike; without rg on PATH the whole file is
+// read, which $.fs.read refuses past 4 MiB.
+const transcriptRows = async ($: EngineInterface, pattern: string) => {
   const path = await transcriptPath($);
-  // A long transcript is past the 4 MiB that $.fs.read takes, so read its tail.
   try {
-    const tail = await $.process.run([
-      "tail",
-      "-n",
-      String(TIER_SCAN_ROWS),
+    const found = await $.process.run([
+      "rg",
+      "--no-config",
+      "-e",
+      pattern,
+      "--",
       path,
     ]);
-    if (tail.exitCode === 0) return cacheTier(tail.stdout);
+    if (found.exitCode <= 1) return found.stdout.split("\n");
   } catch {
-    // no tail on PATH
+    // no rg on PATH
+  }
+  const match = new RegExp(pattern);
+  try {
+    return String(await $.fs.read(path))
+      .split("\n")
+      .filter((row) => match.test(row));
+  } catch {
+    return [];
+  }
+};
+
+// The fields that decide the tier, as `rg -n -o` prints them: `<row>:<field>`.
+// Quotes inside a message are escaped, so only a row's own fields match.
+const TIER_FIELDS = '"isSidechain":true|"ephemeral_(1h|5m)_input_tokens":[1-9]';
+
+// The tier of the newest main-thread row that wrote the cache.
+const tierOfFields = (printed: string): CacheTier => {
+  const rows = new Map<number, string>();
+  for (const line of printed.split("\n")) {
+    const at = line.indexOf(":");
+    const row = Number(line.slice(0, at));
+    if (at > 0) rows.set(row, (rows.get(row) ?? "") + line.slice(at + 1));
+  }
+  for (const row of [...rows.keys()].sort((a, b) => b - a)) {
+    const fields = rows.get(row) ?? "";
+    if (fields.includes('"isSidechain"')) continue;
+    if (fields.includes("_1h_")) return "1h";
+    if (fields.includes("_5m_")) return "5m";
+  }
+  return "unknown";
+};
+
+const readTier = async ($: EngineInterface): Promise<CacheTier> => {
+  const path = await transcriptPath($);
+  try {
+    const found = await $.process.run([
+      "rg",
+      "--no-config",
+      "-n",
+      "-o",
+      "-e",
+      TIER_FIELDS,
+      "--",
+      path,
+    ]);
+    if (found.exitCode <= 1) return tierOfFields(found.stdout);
+  } catch {
+    // no rg on PATH
   }
   try {
     return cacheTier(String(await $.fs.read(path)));
@@ -165,13 +217,9 @@ const readTier = async ($: EngineInterface): Promise<CacheTier> => {
 // transcript as a custom-title row, anywhere in the file.
 const sessionTitle = async ($: EngineInterface) => {
   try {
-    const found = await $.process.run([
-      "grep",
-      "-F",
-      '"type":"custom-title"',
-      await transcriptPath($),
-    ]);
-    const rows = found.stdout.trim().split("\n");
+    const rows = (await transcriptRows($, '"type":"custom-title"')).filter(
+      (row) => row.trim() !== "",
+    );
     const title = JSON.parse(rows[rows.length - 1] ?? "").customTitle;
     return typeof title === "string" && title.trim() !== ""
       ? title.trim()
@@ -278,14 +326,8 @@ const conversationText = (row: string) => {
 // shortcut: any other upper-case KEY-123 counts too, extend NOT_TICKET if one wins.
 const transcriptTicket = async ($: EngineInterface) => {
   try {
-    const found = await $.process.run([
-      "grep",
-      "-E",
-      KEY.source,
-      await transcriptPath($),
-    ]);
     const counts = new Map<string, number>();
-    for (const row of found.stdout.split("\n")) {
+    for (const row of await transcriptRows($, KEY.source)) {
       const text = conversationText(row);
       if (text === undefined) continue;
       for (const [key] of text.matchAll(KEY)) {
