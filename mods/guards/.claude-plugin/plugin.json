@@ -1,0 +1,22 @@
+{
+  "author": {
+    "name": "ame"
+  },
+  "description": "Shared guards that turn agent rules into checks: rg over recursive grep, a confirmation for git commit and push outside your own repos, a preview before a git command discards uncommitted changes, a check before a reply hands back unchecked items, no bold or italic in markdown, no attribution in commits or PRs, and no private work terms in your public repos.",
+  "name": "guards",
+  "userConfig": {
+    "labOwners": {
+      "default": "",
+      "description": "GitHub owners of your own repos, separated by spaces or commas. git commit, git push and gh pr create run without asking only in a repo whose origin one of them owns; left empty, they ask everywhere.",
+      "title": "Lab repo owners",
+      "type": "string"
+    },
+    "privateTerms": {
+      "default": "",
+      "description": "Words that must never reach your public lab repos, separated by spaces or commas, such as a work ticket prefix, a client name or a work email domain. A Write, Edit, git commit or gh pr text holding one is denied in a lab repo. Left empty, nothing is checked.",
+      "title": "Private terms",
+      "type": "string"
+    }
+  },
+  "version": "0.3.0"
+}
