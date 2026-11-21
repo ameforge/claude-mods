@@ -483,85 +483,6 @@ test("a resumed session with a stored handoff offers it, and /handoff now opens 
   expect(store.size).toBe(0);
 });
 
-for (const [title, args, expected] of [
-  ["app-ticket-abc-101", "rename", /^rename ABC-101_\d{8}_\d{6}$/],
-  ["ABC-101_20261015_150400", "rename", /^rename ABC-101_\d{8}_\d{6}$/],
-  ["My work", "rename ABC-101 spec", /^rename ABC-101_\d{8}_\d{6}$/],
-  ["My work", "rename", /^rename My work_\d{8}_\d{6}$/],
-  ["", "rename", /^rename Picked name_\d{8}_\d{6}$/],
-] as const) {
-  test(`/handoff ${args} on "${title}" stamps the name`, async ($, on) => {
-    const clock = mock.clock(on);
-    const {commands} = engine(on, cacheWrite("1h"), {title});
-    await $.session.start({
-      cwd: "D:/ws/demo",
-      isInteractive: true,
-      surface: null,
-    });
-    await $.command.run({args, command: "handoff", ...typed});
-    await clock.advance(1);
-    expect(commands[commands.length - 1]).toMatch(expected);
-  });
-}
-
-test("/handoff rename names the ticket the conversation mentions most, without asking Claude Code for a name", async ($, on) => {
-  const clock = mock.clock(on);
-  const {commands} = engine(on, cacheWrite("1h"), {
-    title: "",
-    transcriptKeys: [
-      "ABC-404",
-      "ABC-202",
-      "UTF-8",
-      "UTF-8",
-      "UTF-8",
-      "ABC-202",
-    ],
-  });
-  await $.session.start({
-    cwd: "D:/ws/demo",
-    isInteractive: true,
-    surface: null,
-  });
-  await $.command.run({args: "rename", command: "handoff", ...typed});
-  await clock.advance(1);
-  expect(commands).toHaveLength(1);
-  expect(commands[0]).toMatch(/^rename ABC-202_\d{8}_\d{6}$/);
-});
-
-test("/handoff rename ignores a ticket key that only the injected instructions name", async ($, on) => {
-  const clock = mock.clock(on);
-  const {commands} = engine(on, cacheWrite("1h"), {
-    instructionKeys: ["ABC-505", "ABC-505", "ABC-505"],
-    title: "My work",
-    transcriptKeys: [],
-  });
-  await $.session.start({
-    cwd: "D:/ws/demo",
-    isInteractive: true,
-    surface: null,
-  });
-  await $.command.run({args: "rename", command: "handoff", ...typed});
-  await clock.advance(1);
-  expect(commands[commands.length - 1]).toMatch(/^rename My work_\d{8}_\d{6}$/);
-});
-
-test("/handoff rename ignores the ticket in the git branch every row records", async ($, on) => {
-  const clock = mock.clock(on);
-  const {commands} = engine(on, cacheWrite("1h"), {
-    gitBranch: "fix/ABC-606",
-    title: "",
-    transcriptKeys: ["ABC-707", "ABC-707"],
-  });
-  await $.session.start({
-    cwd: "D:/ws/demo",
-    isInteractive: true,
-    surface: null,
-  });
-  await $.command.run({args: "rename", command: "handoff", ...typed});
-  await clock.advance(1);
-  expect(commands[0]).toMatch(/^rename ABC-707_\d{8}_\d{6}$/);
-});
-
 test("the cold handoff names the new conversation after the ticket too", async ($, on) => {
   const clock = mock.clock(on);
   const {commands} = engine(on, cacheWrite("1h"), {
@@ -573,6 +494,44 @@ test("the cold handoff names the new conversation after the ticket too", async (
   expect(commands[0]).toBe("clear");
   expect(commands[1]).toMatch(/^rename ABC-202_\d{8}_\d{6}$/);
 });
+
+// The ticket rules /rename-jira-stamp shares: the key named most, the first on a
+// tie, with standards, injected instructions and the git branch skipped.
+const ticketCases: [string, EngineOptions, RegExp][] = [
+  [
+    "the key mentioned most",
+    {
+      transcriptKeys: [
+        "ABC-404",
+        "ABC-202",
+        "UTF-8",
+        "UTF-8",
+        "UTF-8",
+        "ABC-202",
+      ],
+    },
+    /^rename ABC-202_\d{8}_\d{6}$/,
+  ],
+  [
+    "the old name over a key only the instructions name",
+    {instructionKeys: ["ABC-505", "ABC-505"], transcriptKeys: []},
+    /^rename My work_\d{8}_\d{6}$/,
+  ],
+  [
+    "the conversation's key over the git branch's",
+    {gitBranch: "fix/ABC-606", transcriptKeys: ["ABC-707"]},
+    /^rename ABC-707_\d{8}_\d{6}$/,
+  ],
+];
+for (const [name, options, expected] of ticketCases) {
+  test(`the cold handoff names the new conversation after ${name}`, async ($, on) => {
+    const clock = mock.clock(on);
+    const {commands} = engine(on, cacheWrite("1h"), options);
+    await oneTurn($);
+    await clock.advance(2 * 60 * MINUTE);
+    expect(commands[1]).toMatch(expected);
+  });
+}
 
 test("a new conversation restarted before its first prompt shows the handoff and still carries it", async ($, on) => {
   mock.clock(on, {now: 10 * MINUTE});

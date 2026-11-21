@@ -324,19 +324,6 @@ const nameSession = async ($: EngineInterface) => {
   }
 };
 
-// /handoff rename [name]: the name, or the current one, with a fresh stamp.
-const renameStamped = async ($: EngineInterface, name: string) => {
-  const title = name !== "" ? name : await nameSession($);
-  if (title === undefined) {
-    $.ui.toast("cache-handoff: the conversation has no name to stamp.");
-    return;
-  }
-  await $.command.run({
-    args: stampedTitle(title, await $.clock.now()),
-    command: "rename",
-  });
-};
-
 const coldNotice = (coldAt: number, stored: StoredHandoff | undefined) => {
   const cold = `Cache went cold at ${clockTime(coldAt)}`;
   if (stored === undefined) {
@@ -516,16 +503,6 @@ const ensurePoller = async ($: EngineInterface) => {
 };
 
 const handoffCommand = async ($: EngineInterface, args: string) => {
-  const rename = /^rename(?:\s+(.*))?$/is.exec(args.trim());
-  if (rename !== null) {
-    // $.command.run waits for the session to be idle, so this runs just after.
-    $.clock.after(0, () => {
-      renameStamped($, rename[1]?.trim() ?? "").catch((error) =>
-        $.ui.toast(`cache-handoff: could not rename: ${errorText(error)}`),
-      );
-    });
-    return "Renaming the conversation with a timestamp.";
-  }
   const word = args.trim().toLowerCase();
   if (word === "off") {
     idle.isDisabled = true;
@@ -567,7 +544,7 @@ const handoffCommand = async ($: EngineInterface, args: string) => {
     stored === undefined
       ? "No handoff stored."
       : `Handoff from ${clockTime(stored.writtenAt)} stored.`;
-  return `cache-handoff: ${state}. ${handoff} coldAction: ${config.coldAction}. Usage: /${config.command} off | on | now | rename [name]`;
+  return `cache-handoff: ${state}. ${handoff} coldAction: ${config.coldAction}. Usage: /${config.command} off | on | now`;
 };
 
 export const register: Register = (on, options) => {
@@ -585,9 +562,9 @@ export const register: Register = (on, options) => {
       6 * MINUTE_MS,
     );
     const spec = {
-      argumentHint: "off | on | now | rename [name]",
+      argumentHint: "off | on | now",
       description:
-        "Cache handoff: off, on, now to continue from the handoff, or rename with a timestamp",
+        "Cache handoff: off, on, or now to continue from the handoff",
     };
     // A refused name must not stop the rest of session.start.
     try {
