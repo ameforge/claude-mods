@@ -1,6 +1,7 @@
 // git-preview: before a git command that throws away uncommitted work runs
-// (reset --hard, stash, clean, checkout -- / ., restore, switch --discard-changes),
-// list the files it would touch so the person can allow or cancel it.
+// (reset --hard, stash, stash drop / clear, clean, checkout -- / ., restore,
+// switch --discard-changes), list the files or stashes it would touch so the
+// person can allow or cancel it.
 import type {Run} from "./git-ask";
 
 export const PREVIEW_REASON =
@@ -9,7 +10,8 @@ const SHOWN = 10;
 
 type Step =
   | {kind: "status"; dir?: string; paths: string[]; untracked: boolean}
-  | {kind: "clean"; dir?: string; args: string[]};
+  | {kind: "clean"; dir?: string; args: string[]}
+  | {kind: "stashes"; dir?: string; ref?: string};
 
 const unquote = (token: string) => token.replace(/^["']|["']$/g, "");
 
@@ -42,6 +44,9 @@ const stepFor = (sub: string, args: string[], dir?: string): Step | null => {
       return has(args, "--hard") ? status([]) : null;
     case "stash": {
       const verb = args[0] && !args[0].startsWith("-") ? args[0] : "push";
+      if (verb === "clear") return {dir, kind: "stashes"};
+      if (verb === "drop")
+        return {dir, kind: "stashes", ref: args[1] ?? "stash@{0}"};
       if (verb !== "push" && verb !== "save") return null;
       const rest = verb === args[0] ? args.slice(1) : args;
       const untracked = has(rest, "-u", "--include-untracked", "-a", "--all");
@@ -69,30 +74,62 @@ const stepFor = (sub: string, args: string[], dir?: string): Step | null => {
   }
 };
 
-// shortcut: a `cd` before git is not followed (only `git -C`), upgrade if cd-then-git shows up in practice.
-export const destructiveSteps = (command: string): Step[] => {
-  const steps: Step[] = [];
+export type GitCall = {args: string[]; dir?: string; sub: string};
+
+const isAbsolute = (dir: string) => /^(?:[a-zA-Z]:)?[\\/]/.test(dir);
+const under = (base: string | undefined, dir: string) =>
+  base === undefined || isAbsolute(dir) ? dir : `${base}/${dir}`;
+
+// A dir from a command, resolved against cwd; Git Bash's /d/ws reads as d:/ws.
+export const resolveDir = (dir: string | undefined, cwd: string) =>
+  dir ? under(cwd, dir.replace(/^\/([a-zA-Z])(?=\/|$)/, "$1:")) : cwd;
+
+// Each git invocation in a command line, split on && || ; | and newlines, with
+// the dir that a `cd` before it and its own `git -C` point at. A dir holding
+// $ or ~ is kept as written, so git fails to find it and the guards stand aside.
+export const gitCalls = (command: string): GitCall[] => {
+  const calls: GitCall[] = [];
+  let here: string | undefined;
   for (const segment of command.split(/&&|\|\||[;|\n]/)) {
     const words = segment.trim().split(/\s+/).map(unquote);
+    if (/^(?:cd|pushd|Set-Location|sl)$/i.test(words[0] ?? "") && words[1])
+      here = under(here, words[1]);
     let i = words.indexOf("git");
     if (i < 0) continue;
-    let dir: string | undefined;
+    let dir = here;
     for (i++; i < words.length; i++) {
       const w = words[i] ?? "";
-      if (w === "-C") dir = words[++i];
+      if (w === "-C") dir = under(here, words[++i] ?? "");
       else if (w === "-c") i++;
       else if (!w.startsWith("-")) break;
     }
-    const step = stepFor(words[i] ?? "", words.slice(i + 1), dir);
-    if (step) steps.push(step);
+    calls.push({args: words.slice(i + 1), dir, sub: words[i] ?? ""});
   }
-  return steps;
+  return calls;
 };
+
+export const destructiveSteps = (command: string): Step[] =>
+  gitCalls(command).flatMap((c) => stepFor(c.sub, c.args, c.dir) ?? []);
 
 const lines = (stdout: string) => stdout.split("\n").filter(Boolean);
 
 const filesFor = async (run: Run, step: Step, cwd: string) => {
-  const base = ["git", "-c", "core.quotePath=false", "-C", step.dir ?? cwd];
+  const base = [
+    "git",
+    "-c",
+    "core.quotePath=false",
+    "-C",
+    resolveDir(step.dir, cwd),
+  ];
+  if (step.kind === "stashes") {
+    // clear drops every entry, drop the one ref: `stash@{0}: WIP on main: ...`.
+    const {exitCode, stdout} = await run([...base, "stash", "list"]);
+    if (exitCode !== 0) return [];
+    const ref = step.ref;
+    return ref
+      ? lines(stdout).filter((l) => l.startsWith(`${ref}:`))
+      : lines(stdout);
+  }
   if (step.kind === "clean") {
     // -f/-i dropped, -n added: `clean -fdx` previews as `clean -n -dx`.
     const flags = step.args.map((a) =>
@@ -135,5 +172,5 @@ export const previewFiles = async (command: string, cwd: string, run: Run) => {
 export const previewQuestion = (files: string[]) => {
   const more = files.length - SHOWN;
   const list = files.slice(0, SHOWN).join(", ");
-  return `This git command would discard changes in ${files.length} file(s): ${list}${more > 0 ? `, and ${more} more` : ""}. Run it?`;
+  return `This git command would discard ${files.length} file(s) or stash(es): ${list}${more > 0 ? `, and ${more} more` : ""}. Run it?`;
 };

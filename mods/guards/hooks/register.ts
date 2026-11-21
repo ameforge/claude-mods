@@ -1,6 +1,11 @@
 import type {EngineInterface, Register} from "claude-code";
 import {GIT_REASON, labOrigin, needsGitAsk, type Run} from "./git-ask";
-import {PREVIEW_REASON, previewFiles, previewQuestion} from "./git-preview";
+import {
+  PREVIEW_REASON,
+  previewFiles,
+  previewQuestion,
+  resolveDir,
+} from "./git-preview";
 import {CREDIT_REASON, hasCredit, isCommitOrPr} from "./no-credit";
 import {breaksPlainMd, MD_REASON} from "./plain-md";
 import {
@@ -13,6 +18,13 @@ import {
   termWords,
 } from "./private-terms";
 import {isRecursiveGrep, RG_REASON} from "./rg-only";
+import {
+  dirtyFiles,
+  foreignFiles,
+  STAGE_REASON,
+  stageQuestion,
+  sweepDir,
+} from "./stage-guard";
 import {listsUnchecked, VERIFY_REASON} from "./verify-first";
 
 // git-ask asks in its own dialog from tool.call: where cc-plugin-sec-default is
@@ -40,6 +52,43 @@ const gitPreview = async ($: EngineInterface, command: string) => {
     .ask(previewQuestion(files), ["Run", "Cancel"])
     .catch(() => "Cancel");
   return answer === "Run" ? undefined : {deny: `Declined: ${PREVIEW_REASON}`};
+};
+
+// stage-guard state: per repo root, the files dirty at session start; the paths
+// this session wrote through Write or Edit.
+type Stage = {baseline: Map<string, Set<string>>; written: Set<string>};
+
+const takeBaseline = async ($: EngineInterface, cwd: string, s: Stage) => {
+  const dirty = await dirtyFiles((argv) => $.process.run(argv), cwd).catch(
+    () => null,
+  );
+  if (dirty && !s.baseline.has(dirty.root))
+    s.baseline.set(dirty.root, new Set(dirty.files));
+};
+
+// A sweep that would stage foreign files asks first. A repo first seen at the sweep
+// (another repo than the session's start, through git -C or cd) takes its dirty
+// files as the baseline, so only what this session wrote passes without asking.
+const stageGuard = async ($: EngineInterface, command: string, s: Stage) => {
+  const dir = sweepDir(command);
+  if (dir === null) return;
+  const target = resolveDir(dir, await $.session.cwd());
+  const dirty = await dirtyFiles((argv) => $.process.run(argv), target).catch(
+    () => null,
+  );
+  if (!dirty) return;
+  const baseline = s.baseline.get(dirty.root) ?? new Set(dirty.files);
+  s.baseline.set(dirty.root, baseline);
+  const foreign = foreignFiles(dirty.files, baseline, s.written, dirty.root);
+  if (!foreign.length) return;
+  const answer = await $.ui
+    .ask(stageQuestion(foreign), ["Run", "Cancel"])
+    .catch(() => "Cancel");
+  if (answer === "Run") return;
+  const mine = dirty.files.filter((f) => !foreign.includes(f));
+  return {
+    deny: `Declined: ${STAGE_REASON}. Stage this session's files by name${mine.length ? `: git add ${mine.join(" ")}` : ""}.`,
+  };
 };
 
 type Guarded = {lab: RegExp | null; terms: RegExp | null; words: string[]};
@@ -93,6 +142,13 @@ export const register: Register = (on, options) => {
     terms: privateTermPattern(privateTerms),
     words: termWords(privateTerms),
   };
+  const stage: Stage = {baseline: new Map(), written: new Set()};
+
+  // The baseline is taken once per repo, so a /clear keeps the first one.
+  on("session.start", async ($, e, next) => {
+    await takeBaseline($, e.cwd, stage);
+    return next(e);
+  });
 
   on("tool.call", {tool: "Bash"}, async ($, e, next) => {
     if (isRecursiveGrep(e.command)) return {deny: RG_REASON};
@@ -101,6 +157,7 @@ export const register: Register = (on, options) => {
     if (leak) return leak;
     return (
       (await gitPreview($, e.command)) ??
+      (await stageGuard($, e.command, stage)) ??
       (await gitAsk($, e.command, lab)) ??
       next(e)
     );
@@ -112,6 +169,7 @@ export const register: Register = (on, options) => {
     if (leak) return leak;
     return (
       (await gitPreview($, e.command)) ??
+      (await stageGuard($, e.command, stage)) ??
       (await gitAsk($, e.command, lab)) ??
       next(e)
     );
@@ -121,6 +179,7 @@ export const register: Register = (on, options) => {
     if (breaksPlainMd(e.file_path, e.content)) return {deny: MD_REASON};
     if (await fileLeaks($, e.file_path, e.content, g))
       return {deny: PRIVATE_REASON};
+    stage.written.add(e.file_path);
     return next(e);
   });
 
@@ -128,6 +187,7 @@ export const register: Register = (on, options) => {
     if (breaksPlainMd(e.file_path, e.new_string)) return {deny: MD_REASON};
     if (await fileLeaks($, e.file_path, e.new_string, g))
       return {deny: PRIVATE_REASON};
+    stage.written.add(e.file_path);
     return next(e);
   });
 

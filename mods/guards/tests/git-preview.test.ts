@@ -1,5 +1,5 @@
 import {expect, test} from "claude-code/testing";
-import {destructiveSteps, previewFiles} from "../hooks/git-preview";
+import {destructiveSteps, previewFiles, resolveDir} from "../hooks/git-preview";
 
 const CWD = "D:/ws/app";
 
@@ -40,10 +40,30 @@ test("git-preview stays quiet on commands that keep the work tree", () => {
   }
 });
 
-test("git-preview follows git -C to the repo it names", () => {
-  expect(destructiveSteps("git -C ../other reset --hard")[0]?.dir).toBe(
-    "../other",
+test("git-preview follows git -C and a cd before git to the repo they name", () => {
+  const dir = (command: string) => destructiveSteps(command)[0]?.dir;
+  expect(dir("git -C ../other reset --hard")).toBe("../other");
+  expect(dir("cd D:/ws/other && git reset --hard")).toBe("D:/ws/other");
+  expect(dir("cd D:/ws && cd other; git -C sub clean -fd")).toBe(
+    "D:/ws/other/sub",
   );
+  expect(resolveDir("/d/ws/other", CWD)).toBe("d:/ws/other");
+  expect(resolveDir("sub", CWD)).toBe(`${CWD}/sub`);
+});
+
+test("git-preview lists the stashes a stash drop or clear would delete", async () => {
+  const stashes = (argv: readonly string[]) =>
+    Promise.resolve({
+      exitCode: argv.includes("list") ? 0 : 1,
+      stdout: "stash@{0}: WIP on main: abc\nstash@{1}: On main: old\n",
+    });
+  expect(await previewFiles("git stash drop", CWD, stashes)).toEqual([
+    "stash@{0}: WIP on main: abc",
+  ]);
+  expect(await previewFiles("git stash drop stash@{1}", CWD, stashes)).toEqual([
+    "stash@{1}: On main: old",
+  ]);
+  expect(await previewFiles("git stash clear", CWD, stashes)).toHaveLength(2);
 });
 
 // Only "Run" lets the command on, from Bash and PowerShell alike.
