@@ -1,6 +1,6 @@
 # claude-mods
 
-Claude Code mods, published as the `ame-mods` marketplace. Each mod lives in `mods/<name>/`.
+Claude Code mods, published as the `amemods` marketplace. Each mod lives in `mods/<name>/`.
 
 ## Done means green
 
