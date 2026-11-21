@@ -7,9 +7,9 @@
     "url": "git@github-pnam16:ameforge/claude-mods.git"
   },
   "scripts": {
-    "typecheck": "tsc -p mods/cache-handoff && tsc -p mods/cache-keepalive && tsc -p mods/guards && tsc -p mods/rename-jira-stamp && tsc -p mods/whoami",
+    "typecheck": "tsc -p mods/cache-handoff && tsc -p mods/cache-keepalive && tsc -p mods/guards && tsc -p mods/port-guard && tsc -p mods/rename-jira-stamp && tsc -p mods/whoami",
     "lint": "biome migrate --write && biome check --write",
-    "test": "claude plugin test mods/cache-handoff && claude plugin test mods/cache-keepalive && claude plugin test mods/guards && claude plugin test mods/rename-jira-stamp && claude plugin test mods/whoami"
+    "test": "claude plugin test mods/cache-handoff && claude plugin test mods/cache-keepalive && claude plugin test mods/guards && claude plugin test mods/port-guard && claude plugin test mods/rename-jira-stamp && claude plugin test mods/whoami"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",

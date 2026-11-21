@@ -1,9 +1,17 @@
-// dev-port: a session that forgets its dev server is running starts another,
+// A session that forgets its dev server is running starts another,
 // which moves to the next free port or fails, and orphans pile up. Refuse the
 // launch while its port is listened on, and name the holder.
 // Idea from ghost-proc-guard in thieung/claude-mods (MIT).
-import type {Run} from "./git-ask";
-import {resolveDir} from "./git-preview";
+
+export type Run = (
+  argv: readonly string[],
+) => Promise<{exitCode: number; stdout: string}>;
+
+// A dir from a command, resolved against cwd; Git Bash's /d/ws reads as d:/ws.
+const resolveDir = (dir: string, cwd: string) => {
+  const path = dir.replace(/^\/([a-zA-Z])(?=\/|$)/, "$1:");
+  return /^(?:[a-zA-Z]:)?[\\/]/.test(path) ? path : `${cwd}/${path}`;
+};
 
 const DEV_BYPASS = "# allow-dev-port";
 

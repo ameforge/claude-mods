@@ -1,5 +1,4 @@
 import type {EngineInterface, Register} from "claude-code";
-import {devLaunches, devPortReason, portHolder, scriptPort} from "./dev-port";
 import {GIT_REASON, labOrigin, needsGitAsk, type Run} from "./git-ask";
 import {
   PREVIEW_REASON,
@@ -53,25 +52,6 @@ const gitPreview = async ($: EngineInterface, command: string) => {
     .ask(previewQuestion(files), ["Run", "Cancel"])
     .catch(() => "Cancel");
   return answer === "Run" ? undefined : {deny: `Declined: ${PREVIEW_REASON}`};
-};
-
-// dev-port: a dev launch whose port is already listened on is denied, naming the holder.
-const devPort = async ($: EngineInterface, command: string) => {
-  const launches = devLaunches(command, await $.session.cwd());
-  if (!launches.length) return;
-  const run: Run = (argv) => $.process.run(argv);
-  const isWindows = (await $.env.get("OS")) === "Windows_NT";
-  for (const launch of launches) {
-    const port =
-      launch.port ??
-      scriptPort(
-        await $.fs.read(`${launch.dir}/package.json`).catch(() => ""),
-        launch.script ?? "",
-      );
-    if (port === undefined) continue;
-    const holder = await portHolder(run, port, isWindows);
-    if (holder) return {deny: devPortReason(port, holder)};
-  }
 };
 
 // stage-guard state: per repo root, the files dirty at session start; the paths
@@ -176,7 +156,6 @@ export const register: Register = (on, options) => {
     const leak = await gitLeaks($, e.command, g);
     if (leak) return leak;
     return (
-      (await devPort($, e.command)) ??
       (await gitPreview($, e.command)) ??
       (await stageGuard($, e.command, stage)) ??
       (await gitAsk($, e.command, lab)) ??
@@ -189,7 +168,6 @@ export const register: Register = (on, options) => {
     const leak = await gitLeaks($, e.command, g);
     if (leak) return leak;
     return (
-      (await devPort($, e.command)) ??
       (await gitPreview($, e.command)) ??
       (await stageGuard($, e.command, stage)) ??
       (await gitAsk($, e.command, lab)) ??

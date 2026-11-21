@@ -1,0 +1,6 @@
+{
+  "author": {"name": "ame"},
+  "description": "Refuses to start a second dev server while its port is already in use, and names the process holding it.",
+  "name": "port-guard",
+  "version": "0.1.0"
+}

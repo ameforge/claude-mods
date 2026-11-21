@@ -1,12 +1,12 @@
 import {expect, test} from "claude-code/testing";
-import {devLaunches, portHolder, scriptPort} from "../hooks/dev-port";
+import {devLaunches, portHolder, scriptPort} from "../hooks/port-guard";
 
 const CWD = "D:/ws/app";
 
 const out = (stdout: string, exitCode = 0) =>
   Promise.resolve({exitCode, stdout});
 
-test("dev-port finds dev launches, their folder and port", () => {
+test("port-guard finds dev launches, their folder and port", () => {
   expect(devLaunches("pnpm dev", CWD)).toEqual([{dir: CWD, script: "dev"}]);
   expect(devLaunches("cd web && npm run dev -- --port 5174", CWD)).toEqual([
     {dir: `${CWD}/web`, port: 5174},
@@ -25,7 +25,7 @@ test("dev-port finds dev launches, their folder and port", () => {
   expect(devLaunches("pnpm dev # allow-dev-port", CWD)).toEqual([]);
 });
 
-test("dev-port reads the port of a package.json script", () => {
+test("port-guard reads the port of a package.json script", () => {
   const pkg = JSON.stringify({
     scripts: {dev: "vite --port 5175", start: "next start", test: "vitest"},
   });
@@ -35,7 +35,7 @@ test("dev-port reads the port of a package.json script", () => {
   expect(scriptPort("not json", "dev")).toBeUndefined();
 });
 
-test("dev-port names the holder on Windows, macOS and Linux", async () => {
+test("port-guard names the holder on Windows, macOS and Linux", async () => {
   const windows = (argv: readonly string[]) =>
     argv[0] === "netstat"
       ? out(
@@ -77,7 +77,7 @@ test("dev-port names the holder on Windows, macOS and Linux", async () => {
 });
 
 // The engine path: a pnpm dev whose script port is taken is denied, a free one runs.
-test("dev-port denies a launch whose port is taken", async ($, on) => {
+test("port-guard denies a launch whose port is taken", async ($, on) => {
   const ran: string[] = [];
   on("tool.call", (_$, e) => {
     if (e.tool === "Bash") ran.push(e.command);
