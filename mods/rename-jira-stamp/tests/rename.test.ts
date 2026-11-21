@@ -40,27 +40,28 @@ const engine = (on: On, options: EngineOptions = {}) => {
   on("session.cwd", () => ({value: "D:/ws/demo"}));
   on("env.get", () => ({value: undefined}));
   on("process.run", (_$, e) => {
-    const stdout = e.argv.includes("-E")
-      ? [
-          ...(options.transcriptKeys ?? []).map((key) =>
-            JSON.stringify({
-              gitBranch: options.gitBranch,
-              message: {content: key},
-              type: "user",
-            }),
-          ),
-          ...(options.instructionKeys ?? []).map((key) =>
-            JSON.stringify({content: key, type: "attachment"}),
-          ),
-        ].join("\n")
-      : JSON.stringify({customTitle: currentTitle, type: "custom-title"});
+    const transcript = [
+      ...(options.transcriptKeys ?? []).map((key) =>
+        JSON.stringify({
+          gitBranch: options.gitBranch,
+          message: {content: key},
+          type: "user",
+        }),
+      ),
+      ...(options.instructionKeys ?? []).map((key) =>
+        JSON.stringify({content: key, type: "attachment"}),
+      ),
+      JSON.stringify({customTitle: currentTitle, type: "custom-title"}),
+    ];
+    // rg as the mod runs it: the rows matching `-e`.
+    const pattern = new RegExp(String(e.argv[e.argv.indexOf("-e") + 1]));
     return {
       value: {
         exitCode: 0,
         isStderrTruncated: false,
         isStdoutTruncated: false,
         stderr: "",
-        stdout,
+        stdout: transcript.filter((row) => pattern.test(row)).join("\n"),
       },
     };
   });

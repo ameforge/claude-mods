@@ -16,17 +16,41 @@ const transcriptPath = async ($: EngineInterface) => {
   return `${await homeDir($)}/.claude/projects/${project}/${await $.session.id()}.jsonl`;
 };
 
+// The transcript rows that match `pattern`. rg reads a transcript of any size
+// on Windows, macOS and Linux alike; without rg on PATH the whole file is
+// read, which $.fs.read refuses past 4 MiB.
+const transcriptRows = async ($: EngineInterface, pattern: string) => {
+  const path = await transcriptPath($);
+  try {
+    const found = await $.process.run([
+      "rg",
+      "--no-config",
+      "-e",
+      pattern,
+      "--",
+      path,
+    ]);
+    if (found.exitCode <= 1) return found.stdout.split("\n");
+  } catch {
+    // no rg on PATH
+  }
+  const match = new RegExp(pattern);
+  try {
+    return String(await $.fs.read(path))
+      .split("\n")
+      .filter((row) => match.test(row));
+  } catch {
+    return [];
+  }
+};
+
 // The name /rename last gave this session; /rename writes it to the
 // transcript as a custom-title row, anywhere in the file.
 const sessionTitle = async ($: EngineInterface) => {
   try {
-    const found = await $.process.run([
-      "grep",
-      "-F",
-      '"type":"custom-title"',
-      await transcriptPath($),
-    ]);
-    const rows = found.stdout.trim().split("\n");
+    const rows = (await transcriptRows($, '"type":"custom-title"')).filter(
+      (row) => row.trim() !== "",
+    );
     const title = JSON.parse(rows[rows.length - 1] ?? "").customTitle;
     return typeof title === "string" && title.trim() !== ""
       ? title.trim()
@@ -95,14 +119,8 @@ const conversationText = (row: string) => {
 // shortcut: any other upper-case KEY-123 counts too, extend NOT_TICKET if one wins.
 const transcriptTicket = async ($: EngineInterface) => {
   try {
-    const found = await $.process.run([
-      "grep",
-      "-E",
-      KEY.source,
-      await transcriptPath($),
-    ]);
     const counts = new Map<string, number>();
-    for (const row of found.stdout.split("\n")) {
+    for (const row of await transcriptRows($, KEY.source)) {
       const text = conversationText(row);
       if (text === undefined) continue;
       for (const [key] of text.matchAll(KEY)) {
