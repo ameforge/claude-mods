@@ -1,0 +1,6 @@
+{
+  "author": {"name": "ame"},
+  "description": "Shows this session's name, the address other sessions use with SendMessage, on the status line.",
+  "name": "whoami",
+  "version": "0.1.0"
+}
