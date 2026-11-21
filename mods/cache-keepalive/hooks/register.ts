@@ -76,19 +76,44 @@ const transcriptPath = async ($: EngineInterface) => {
   return `${home}/.claude/projects/${project}/${await $.session.id()}.jsonl`;
 };
 
+// The fields that decide the tier, as `rg -n -o` prints them: `<row>:<field>`.
+// Quotes inside a message are escaped, so only a row's own fields match.
+const TIER_FIELDS = '"isSidechain":true|"ephemeral_(1h|5m)_input_tokens":[1-9]';
+
+// The tier of the newest main-thread row that wrote the cache.
+const tierOfFields = (printed: string): CacheTier => {
+  const rows = new Map<number, string>();
+  for (const line of printed.split("\n")) {
+    const at = line.indexOf(":");
+    const row = Number(line.slice(0, at));
+    if (at > 0) rows.set(row, (rows.get(row) ?? "") + line.slice(at + 1));
+  }
+  for (const row of [...rows.keys()].sort((a, b) => b - a)) {
+    const fields = rows.get(row) ?? "";
+    if (fields.includes('"isSidechain"')) continue;
+    if (fields.includes("_1h_")) return "1h";
+    if (fields.includes("_5m_")) return "5m";
+  }
+  return "1h";
+};
+
 const readTier = async ($: EngineInterface): Promise<CacheTier> => {
   const path = await transcriptPath($);
-  // A long transcript is past the 4 MiB that $.fs.read takes, so read its tail.
+  // rg reads a transcript of any size on every OS; $.fs.read stops at 4 MiB.
   try {
-    const tail = await $.process.run([
-      "tail",
+    const found = await $.process.run([
+      "rg",
+      "--no-config",
       "-n",
-      String(TIER_SCAN_ROWS),
+      "-o",
+      "-e",
+      TIER_FIELDS,
+      "--",
       path,
     ]);
-    if (tail.exitCode === 0) return cacheTier(tail.stdout);
+    if (found.exitCode <= 1) return tierOfFields(found.stdout);
   } catch {
-    // no tail on PATH
+    // no rg on PATH
   }
   try {
     return cacheTier(String(await $.fs.read(path)));

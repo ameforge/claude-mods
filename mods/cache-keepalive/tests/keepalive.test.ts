@@ -14,11 +14,11 @@ const engine = (on: On, cacheRead = 100_000) => {
   on("session.id", () => ({value: "session-1"}));
   on("session.cwd", () => ({value: "D:/ws/demo"}));
   on("env.get", () => ({value: undefined}));
-  on("process.run", () => {
-    const stdout = JSON.stringify({
-      message: {usage: {cache_creation: {ephemeral_1h_input_tokens: 5000}}},
-      type: "assistant",
-    });
+  on("process.run", (_$, e) => {
+    // rg -n -o over a transcript whose second row wrote the 1h cache.
+    const stdout = e.argv.includes("-o")
+      ? '2:"ephemeral_1h_input_tokens":5'
+      : "";
     return {
       value: {
         exitCode: 0,
