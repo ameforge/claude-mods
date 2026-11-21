@@ -11,6 +11,12 @@
       "title": "Lab repo owners",
       "type": "string"
     },
+    "off": {
+      "default": "",
+      "description": "Guards to switch off, separated by spaces or commas: rg-only, git-ask, git-preview, stage-guard, verify-first, plain-md, no-credit, private-terms. Set it in a repo's .claude/settings.local.json to quiet the guards that ask, such as in a repo where commits run unattended.",
+      "title": "Guards switched off",
+      "type": "string"
+    },
     "privateTerms": {
       "default": "",
       "description": "Words that must never reach your public lab repos, separated by spaces or commas, such as a work ticket prefix, a client name or a work email domain. A Write, Edit, git commit or gh pr text holding one is denied in a lab repo. Left empty, nothing is checked.",
@@ -18,5 +24,5 @@
       "type": "string"
     }
   },
-  "version": "0.4.0"
+  "version": "0.5.0"
 }

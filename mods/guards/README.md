@@ -15,10 +15,11 @@ Each guard lives in its own file under `hooks/`. `hooks/register.ts` wires them 
 
 ## Settings
 
-| Setting        | Default | Used by                                                                                                                                                                                   |
-| -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `labOwners`    | empty   | git-ask. GitHub owners of your own repos, separated by spaces or commas. A repo whose `origin` one of them owns is a lab repo. Left empty, git-ask asks in every repo.                    |
-| `privateTerms` | empty   | private-terms. Words that must never reach a lab repo, such as a work ticket prefix, a client name or a work email domain, separated by spaces or commas. Left empty, nothing is checked. |
+| Setting        | Default | Used by                                                                                                                                                                                                                                                          |
+| -------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `labOwners`    | empty   | git-ask. GitHub owners of your own repos, separated by spaces or commas. A repo whose `origin` one of them owns is a lab repo. Left empty, git-ask asks in every repo.                                                                                           |
+| `privateTerms` | empty   | private-terms. Words that must never reach a lab repo, such as a work ticket prefix, a client name or a work email domain, separated by spaces or commas. Left empty, nothing is checked.                                                                        |
+| `off`          | empty   | Every guard. Guards to switch off, separated by spaces or commas, such as `stage-guard verify-first`. Read only from `~/.claude/settings.json` or `--settings`, so it applies in every repo; Claude Code ignores `pluginConfigs` in a repo's `.claude` settings. |
 
 Set them with `/plugin configure guards@amemods`, or in `settings.json`:
 
@@ -30,6 +31,8 @@ Set them with `/plugin configure guards@amemods`, or in `settings.json`:
 
 ## Bypass
 
+git-ask, git-preview and stage-guard skip their Run or Cancel dialog when the command is already allowed by the `permissions.allow` rules in the session folder's `.claude/settings.json` or `.claude/settings.local.json`, such as `Bash(git add:*)` in a vibe repo. Every part of a chained command must be allowed.
+
 rg-only lets a command through when it ends with `# allow-grep-r`.
 
 ## Why no classic hooks
@@ -38,6 +41,7 @@ On Team, Enterprise and managed machines, `cc-plugin-sec-default` skips every `c
 
 ## Known limits
 
+- The allow rules in `~/.claude/settings.json` are not read, only those in the session folder's `.claude` settings.
 - no-credit reads the command line only, so a message passed with `git commit -F <file>` is not checked.
 - git-ask treats a move target it cannot resolve (`$HOME`, `~`, `%VAR%`) as a work repo and asks.
 - private-terms checks the repo of the session folder, not a `git -C` or `cd` target. A file a shell writes is caught at the next commit or push, not when it is written.

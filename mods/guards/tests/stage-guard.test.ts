@@ -93,3 +93,39 @@ test("stage-guard asks in a repo first seen at the sweep", async ($, on) => {
   expect(asked[0]).not.toContain("new.ts");
   expect(declined.deny).toContain("git add new.ts");
 });
+
+test(
+  "stage-guard and verify-first stand aside when the off setting names them",
+  {options: {off: "stage-guard, verify-first"}},
+  async ($, on) => {
+    const asked: string[] = [];
+    const prompts: string[] = [];
+    on("tool.call", (_$, e) => {
+      if (e.tool === "AskUserQuestion") asked.push("ask");
+      return {result: "ok"} as never;
+    });
+    on("session.start", (_$, e) => ({cwd: e.cwd}) as never);
+    on("session.cwd", () => ({value: ROOT}) as never);
+    on("process.run", (_$, e) => {
+      const top = e.argv.includes("rev-parse");
+      const stdout = top ? `${ROOT}\n` : " M old.ts\n";
+      return {value: {exitCode: 0, stderr: "", stdout}} as never;
+    });
+    on("turn.complete", () => ({text: ""}) as never);
+    on("prompt.submit", (_$, e) => {
+      prompts.push(e.text);
+      return {text: e.text};
+    });
+    await $.session.start({cwd: ROOT, isInteractive: true, surface: null});
+    const swept = await $.tool.call({command: "git add -A", tool: "Bash"});
+    await $.turn.complete({
+      answer: "Not checked: the CI run",
+      durationMs: 1,
+      isAborted: false,
+      reason: "answer",
+    } as never);
+    expect(swept.deny).toBeUndefined();
+    expect(asked).toEqual([]);
+    expect(prompts).toEqual([]);
+  },
+);
