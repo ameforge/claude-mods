@@ -3,32 +3,31 @@ import type {EngineInterface, Register} from "claude-code";
 // No $.session API names the session; ListAgents' text is the only source.
 const NAME = /This session is (\S+) \[(\w+)\]/;
 
-// shortcut: /rename raises no event, so a new name shows from the next turn on.
-let shown: string | undefined;
-
-const showName = async ($: EngineInterface) => {
+const lookUpName = async ($: EngineInterface) => {
   try {
     const listed = await $.tool.call({tool: "ListAgents"});
-    const name = listed.text?.match(NAME)?.[1];
-    if (name === shown) return;
-    shown = name;
-    $.ui.status(name);
+    return listed.text?.match(NAME)?.[1];
   } catch {
-    // A failed lookup leaves the status line as it was.
+    return undefined;
   }
 };
 
 export const register: Register = (on) => {
-  shown = undefined;
   on("session.start", async ($, e, next) => {
     const started = await next(e);
-    await showName($);
+    await $.command.register({
+      description:
+        "Show this session's name, the address other sessions use with SendMessage",
+      immediate: true,
+      name: "whoami",
+    });
     return started;
   });
 
-  on("turn.start", async ($, e, next) => {
-    const started = await next(e);
-    await showName($);
-    return started;
-  });
+  on("command.run", {command: "whoami"}, async ($) => ({
+    isTextDisplayOnly: true,
+    text:
+      (await lookUpName($)) ??
+      "This session's name could not be read from ListAgents.",
+  }));
 };
