@@ -69,9 +69,14 @@ const GIT_PUBLISH = /\bgit\s+(?:-C\s+\S+\s+)?(commit|push)\b/;
 export const repoReason = (places: string[]) =>
   `${PRIVATE_REASON} Found in: ${places.slice(0, 10).join(", ")}.`;
 
-// Where a commit or push in a lab repo would publish a private term: files in
-// the working tree (untracked ones too, so a file a shell script wrote counts)
-// and, for a push, the patches of commits no remote has yet.
+// git's empty tree, the base to diff against before the first commit.
+const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+
+// Where a commit or push in a lab repo would publish a private term: lines
+// added since HEAD (staged or not, since `git add -A && git commit` stages in
+// the same command), untracked files (so a file a shell script wrote counts)
+// and, for a push, the patches of commits no remote has yet. Text already in
+// HEAD is not scanned again.
 // shortcut: checks the session folder's repo only, not a cd or git -C target.
 export const repoLeaks = async (
   run: Run,
@@ -84,22 +89,41 @@ export const repoLeaks = async (
   const verb = GIT_PUBLISH.exec(command)?.[1];
   if (!(verb && terms) || !lab?.test(await repoOrigin(run, dir))) return [];
   const places = new Set<string>();
-  // git grep finds candidates by plain text; the whole-word test is the pattern's.
-  const found = await run([
-    "git",
-    "-C",
-    dir,
-    "grep",
-    "-I",
-    "-i",
-    "-n",
-    "--untracked",
-    "-F",
-    ...words.flatMap((word) => ["-e", word]),
-  ]);
-  for (const line of found.stdout.split("\n")) {
-    const m = /^(.+?):\d+:(.*)$/.exec(line);
-    if (m?.[1] && terms.test(m[2] ?? "")) places.add(m[1]);
+  const diff = (base: string) =>
+    run(["git", "-C", dir, "diff", "-U0", "--no-color", "--no-ext-diff", base]);
+  let changed = await diff("HEAD");
+  if (changed.exitCode !== 0) changed = await diff(EMPTY_TREE);
+  let file = "";
+  for (const line of changed.stdout.split("\n")) {
+    if (line.startsWith("+++ ")) file = line.replace(/^\+\+\+ (b\/)?/, "");
+    else if (line.startsWith("+") && terms.test(line)) places.add(file);
+  }
+  const untracked = (
+    await run(["git", "-C", dir, "ls-files", "--others", "--exclude-standard"])
+  ).stdout
+    .split("\n")
+    .filter(Boolean);
+  if (untracked.length) {
+    // git grep finds candidates by plain text; the whole-word test is the pattern's.
+    // shortcut: every untracked path goes on one command line, split it if a repo ever holds thousands.
+    const found = await run([
+      "git",
+      "-C",
+      dir,
+      "grep",
+      "-I",
+      "-i",
+      "-n",
+      "--untracked",
+      "-F",
+      ...words.flatMap((word) => ["-e", word]),
+      "--",
+      ...untracked,
+    ]);
+    for (const line of found.stdout.split("\n")) {
+      const m = /^(.+?):\d+:(.*)$/.exec(line);
+      if (m?.[1] && terms.test(m[2] ?? "")) places.add(m[1]);
+    }
   }
   if (verb === "push") {
     const log = await run([

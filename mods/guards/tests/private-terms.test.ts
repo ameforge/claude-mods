@@ -9,11 +9,12 @@ const ORIGINS: Record<string, string> = {
 };
 const options = {labOwners: "labowner", privateTerms: "ABC, acme-corp"};
 
-type Repo = {grep?: string; log?: string};
+type Repo = {diff?: string; grep?: string; log?: string; untracked?: string};
 
 // The engine beneath the mod: a session in cwd, `git remote get-url` answered
-// from ORIGINS, `git grep` and `git log` from repo, and every tool call it is
-// handed collected.
+// from ORIGINS, `git diff`, `git ls-files`, `git grep` and `git log` from repo,
+// and every tool call it is handed collected. `git grep` is answered only when
+// it is limited to untracked paths, as a whole-tree scan is a regression.
 const engine = (on: On, cwd: string, repo: Repo = {}) => {
   const ran: string[] = [];
   on("tool.call", (_$, e) => {
@@ -24,8 +25,13 @@ const engine = (on: On, cwd: string, repo: Repo = {}) => {
   on("process.run", (_$, e) => {
     const verb = e.argv[3];
     const origin = verb === "remote" ? ORIGINS[e.argv[2] ?? ""] : "";
-    const stdout =
-      verb === "grep" ? repo.grep : verb === "log" ? repo.log : origin;
+    const answers: Record<string, string | undefined> = {
+      diff: repo.diff,
+      grep: e.argv.includes("--") ? repo.grep : "",
+      log: repo.log,
+      "ls-files": repo.untracked,
+    };
+    const stdout = verb === "remote" ? origin : answers[verb ?? ""];
     return {
       value: {
         exitCode: stdout ? 0 : verb === "remote" ? 128 : 1,
@@ -96,18 +102,33 @@ test("private-terms checks nothing when no term is set", async ($, on) => {
 });
 
 test(
-  "private-terms denies a commit when a file in the repo holds a term, however it was written",
+  "private-terms denies a commit when a changed or untracked file holds a term, however it was written",
   {options},
   async ($, on) => {
     const ran = engine(on, LAB, {
-      grep: "notes/a.md:3:see ABC-12\nsrc/b.ts:9:const abcd = 1",
+      diff: "diff --git a/src/c.ts b/src/c.ts\n--- a/src/c.ts\n+++ b/src/c.ts\n@@ -1 +1 @@\n-old\n+see acme-corp",
+      grep: "notes/a.md:3:see ABC-12\nnotes/b.md:9:const abcd = 1",
+      untracked: "notes/a.md\nnotes/b.md\n",
     });
     const result = await $.tool.call({
       command: "git add -A && git commit -m x",
       tool: "Bash",
     });
-    expect(result.deny).toContain("Found in: notes/a.md.");
+    expect(result.deny).toContain("Found in: src/c.ts, notes/a.md.");
     expect(ran).toEqual([]);
+  },
+);
+
+test(
+  "private-terms lets a commit through when a term sits only in text HEAD already holds or a removed line",
+  {options},
+  async ($, on) => {
+    const ran = engine(on, LAB, {
+      diff: "diff --git a/old.md b/old.md\n--- a/old.md\n+++ b/old.md\n@@ -3 +3 @@\n-see ABC-12\n+see the ticket",
+      grep: "old.md:3:see ABC-12",
+    });
+    await $.tool.call({command: "git commit -am x", tool: "Bash"});
+    expect(ran).toEqual(["Bash"]);
   },
 );
 
