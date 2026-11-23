@@ -74,6 +74,7 @@ CACHE_HANDOFF_TTL_MIN=3 CACHE_HANDOFF_LEAD_MIN=1 claude
 - The new conversation does not inherit the old one's todo list, permissions granted during that session, or background tasks.
 - The mod works only while Claude Code is open. A handoff saved before you quit is offered again when you resume that session, and is dropped after 7 days if nobody comes back for it. If Claude Code restarts after the switch but before your first prompt, the new conversation shows the handoff again and your first prompt still carries it.
 - The handoff is kept in the mod's own local storage inside Claude Code. Nothing is sent anywhere else.
+- When you come back after the cache went cold and the mod wrote nothing and said nothing, it adds one dim line to the conversation saying why, such as `cache-handoff: 180 minute idle gap, no handoff: context 20k tokens, under 50k`. The model does not see it.
 - The mod reads the session transcript with `rg` (ripgrep) to find the cache tier, the conversation name and its ticket, on Windows, macOS and Linux alike. Without `rg` on PATH it reads the whole file instead, which works only up to 4 MiB.
 
 ## More detail

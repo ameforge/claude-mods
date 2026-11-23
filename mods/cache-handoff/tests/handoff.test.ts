@@ -164,8 +164,12 @@ const engine = (
     return {value: undefined};
   });
   on("ui.toast", () => ({value: undefined}));
-  on("ui.log", () => ({value: undefined}));
-  return {commands, forks, notices, prompts, statuses, store};
+  const logs: string[] = [];
+  on("ui.log", (_$, e) => {
+    logs.push(e.text);
+    return {value: undefined};
+  });
+  return {commands, forks, logs, notices, prompts, statuses, store};
 };
 
 const cacheWrite = (tier: "1h" | "5m") => {
@@ -280,7 +284,7 @@ test("lets Claude Code name an unnamed conversation before the clear", async ($,
 
 test("sits out a conversation under 50k tokens", async ($, on) => {
   const clock = mock.clock(on);
-  const {forks, statuses, commands} = engine(on, cacheWrite("1h"), {
+  const {forks, statuses, commands, logs} = engine(on, cacheWrite("1h"), {
     contextTokens: 20_000,
   });
   await oneTurn($);
@@ -289,6 +293,37 @@ test("sits out a conversation under 50k tokens", async ($, on) => {
   expect(forks.length).toBe(0);
   expect(commands.length).toBe(0);
   expect(statuses.length).toBe(0);
+
+  // Back after the cache went cold: the transcript says why nothing happened.
+  await $.turn.start({text: "again", turnId: "t2"});
+  expect(logs).toEqual([
+    "cache-handoff: 180 minute idle gap, no handoff: context 20k tokens, under 50k",
+  ]);
+});
+
+test("names a turn that never completed when a later turn starts after the TTL", async ($, on) => {
+  const clock = mock.clock(on);
+  const {forks, logs} = engine(on, cacheWrite("1h"));
+  await oneTurn($);
+  await $.turn.start({text: "long job", turnId: "t2"});
+
+  await clock.advance(2 * 60 * MINUTE);
+  expect(forks.length).toBe(0);
+
+  await $.turn.start({text: "again", turnId: "t3"});
+  expect(logs).toEqual([
+    "cache-handoff: 120 minute idle gap, no handoff: the previous turn never completed",
+  ]);
+});
+
+test("logs no idle gap when the person is back before the TTL", async ($, on) => {
+  const clock = mock.clock(on);
+  const {logs} = engine(on, cacheWrite("1h"), {contextTokens: 20_000});
+  await oneTurn($);
+
+  await clock.advance(30 * MINUTE);
+  await $.turn.start({text: "again", turnId: "t2"});
+  expect(logs).toEqual([]);
 });
 
 test("keeps nothing and does nothing at cold when the work is finished", async ($, on) => {

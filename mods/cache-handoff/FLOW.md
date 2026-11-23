@@ -115,6 +115,7 @@ flowchart TD
 - If the machine sleeps through [54m] and wakes after the cache is cold, no handoff is written (the fork would re-cache the whole transcript); the cold notice comes alone.
 - A prompt typed while the handoff fork runs drops that handoff, so the mod never clears a conversation the person is back in.
 - If the 5m tier only shows in the transcript at [54m] (the turn ended before its cache write was saved), the mod stops there, with no handoff and no reminder.
+- A gap past the TTL that ended silently (sat out at [0m], still armed because no poll ran, or a turn that never completed) gets one `$.ui.log` line with the reason at the next main turn's start, so the transcript shows why no handoff came. A gap the mod already reported (handoff, cold notice, or a log at [54m]) gets none.
 - The handoff is no longer sent to mcp-memory-service, so `session-start.js` and other providers (Codex, opencode, Gemini) do not see it.
 - The new conversation starts without the old one's session state: its todo list, permissions granted during the session, and background tasks.
 - Only a prompt typed in the composer takes the handoff; messages from other sessions and plugin prompts pass through unchanged.

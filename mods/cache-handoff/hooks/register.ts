@@ -62,6 +62,8 @@ const idle = {
   // the store key it came from.
   pendingHandoff: undefined as string | undefined,
   pendingKey: undefined as string | undefined,
+  // Why the mod sits out the current gap, or undefined while it watches it.
+  skipReason: undefined as string | undefined,
   transcriptPath: undefined as string | undefined,
 };
 
@@ -522,6 +524,23 @@ const actIfCold = async ($: EngineInterface, now: number) => {
   showNotice($, coldNotice(coldAt, stored));
 };
 
+// A gap past the TTL that ended with no handoff, notice or log line leaves its
+// reason in the transcript, so a silent miss can be traced afterwards.
+const reportSilentGap = ($: EngineInterface, now: number) => {
+  if (idle.lastTurnEndAt === undefined) return;
+  const gapMs = now - idle.lastTurnEndAt;
+  if (gapMs < config.cacheTtlMs) return;
+  const why = idle.isInTurn
+    ? "the previous turn never completed"
+    : idle.isArmed
+      ? `still armed, last poll ${Math.round((now - lastPollAt) / MINUTE_MS)} minutes ago`
+      : idle.skipReason;
+  if (why !== undefined)
+    $.ui.log(
+      `cache-handoff: ${Math.round(gapMs / MINUTE_MS)} minute idle gap, no handoff: ${why}`,
+    );
+};
+
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
 
@@ -671,6 +690,7 @@ export const register: Register = (on, options) => {
   // Turns raised while the handoff forks are the mod's own, never the person's.
   on("turn.start", async ($, e, next) => {
     if (e.agentId === undefined && !idle.isWriting) {
+      reportSilentGap($, await $.clock.now());
       idle.isInTurn = true;
       // The person is back in this conversation: its handoff is moot.
       if (idle.pendingHandoff === undefined)
@@ -689,13 +709,19 @@ export const register: Register = (on, options) => {
       idle.lastTurnEndAt = await $.clock.now();
       idle.forkedAt = undefined;
       idle.isFinished = false;
-      const tokens = (await $.session.usage()).context.tokens ?? 0;
+      const tokens = (await $.session.usage()).context.tokens;
       // On the 5m tier the cache is cold long before a handoff could be
       // written, so the mod sits that gap out too.
-      const isWatched =
-        !idle.isDisabled &&
-        tokens >= MIN_CONTEXT_TOKENS &&
-        (await readTier($)) !== "5m";
+      idle.skipReason = idle.isDisabled
+        ? "/handoff off"
+        : tokens === undefined
+          ? "context size unknown"
+          : tokens < MIN_CONTEXT_TOKENS
+            ? `context ${Math.round(tokens / 1000)}k tokens, under 50k`
+            : (await readTier($)) === "5m"
+              ? "5 minute cache tier"
+              : undefined;
+      const isWatched = idle.skipReason === undefined;
       // A gap the mod sits out ends quietly, with no notice at cold either.
       idle.isColdHandled = !isWatched;
       idle.isArmed = isWatched;
