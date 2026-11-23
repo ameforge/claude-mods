@@ -661,10 +661,14 @@ export const register: Register = (on, options) => {
     return next(e);
   });
 
-  on("command.run", async ($, e, next) =>
-    e.command === config.command
-      ? {text: await handoffCommand($, e.args)}
-      : next(e),
+  // A matcher, so the mod's name does not label every other command's output.
+  on(
+    "command.run",
+    {command: ["handoff", "cache-handoff"]},
+    async ($, e, next) =>
+      e.command === config.command
+        ? {text: await handoffCommand($, e.args)}
+        : next(e),
   );
 
   // The first prompt the person types in the new conversation opens with the
