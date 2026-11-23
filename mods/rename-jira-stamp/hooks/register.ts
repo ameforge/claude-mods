@@ -190,8 +190,7 @@ export const register: Register = (on) => {
     return next(e);
   });
 
-  on("command.run", ($, e, next) => {
-    if (e.command !== COMMAND) return next(e);
+  on("command.run", {command: COMMAND}, ($, e) => {
     // $.command.run waits for the session to be idle, so this runs just after.
     $.clock.after(0, () => {
       renameStamped($, e.args.trim()).catch((error) =>

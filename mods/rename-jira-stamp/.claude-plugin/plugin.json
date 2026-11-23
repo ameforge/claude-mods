@@ -2,5 +2,5 @@
   "author": {"name": "ame"},
   "description": "Renames a conversation to the Jira ticket it is about, or a name you give, plus a timestamp.",
   "name": "rename-jira-stamp",
-  "version": "0.1.1"
+  "version": "0.1.2"
 }
