@@ -2,7 +2,7 @@
   "author": {
     "name": "ame"
   },
-  "description": "Shared guards that turn agent rules into checks: rg over recursive grep, a confirmation for git commit and push outside your own repos, a preview before a git command discards uncommitted changes, a confirmation before git add -A stages another session's files, a check before a reply hands back unchecked items, no bold or italic in markdown, no attribution in commits or PRs, and no private work terms in your public repos.",
+  "description": "Shared guards that turn agent rules into checks: rg over recursive grep, a confirmation for git commit and push outside your own repos, a preview before a git command discards uncommitted changes, a confirmation before git add -A stages another session's files, a check before a reply hands back unchecked items, no bold or italic in markdown, no bullet character U+2022 in any file, no attribution in commits or PRs, and no private work terms in your public repos.",
   "name": "guards",
   "userConfig": {
     "labOwners": {
@@ -13,7 +13,7 @@
     },
     "off": {
       "default": "",
-      "description": "Guards to switch off, separated by spaces or commas: rg-only, git-ask, git-preview, stage-guard, verify-first, plain-md, no-credit, private-terms. Set it in a repo's .claude/settings.local.json to quiet the guards that ask, such as in a repo where commits run unattended.",
+      "description": "Guards to switch off, separated by spaces or commas: rg-only, git-ask, git-preview, stage-guard, verify-first, plain-md, no-bullet, no-credit, private-terms. Set it in a repo's .claude/settings.local.json to quiet the guards that ask, such as in a repo where commits run unattended.",
       "title": "Guards switched off",
       "type": "string"
     },
@@ -24,5 +24,5 @@
       "type": "string"
     }
   },
-  "version": "0.6.0"
+  "version": "0.7.0"
 }

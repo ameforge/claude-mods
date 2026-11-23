@@ -7,6 +7,7 @@ import {
   previewQuestion,
   resolveDir,
 } from "./git-preview";
+import {BULLET_REASON, hasBullet} from "./no-bullet";
 import {CREDIT_REASON, hasCredit, isCommitOrPr} from "./no-credit";
 import {breaksPlainMd, MD_REASON} from "./plain-md";
 import {
@@ -223,6 +224,8 @@ export const register: Register = (on, options) => {
   on("tool.call", {tool: "Write"}, async ($, e, next) => {
     if (!off.has("plain-md") && breaksPlainMd(e.file_path, e.content))
       return {deny: MD_REASON};
+    if (!off.has("no-bullet") && hasBullet(e.content))
+      return {deny: BULLET_REASON};
     if (await fileLeaks($, e.file_path, e.content, g))
       return {deny: PRIVATE_REASON};
     stage.written.add(e.file_path);
@@ -232,6 +235,8 @@ export const register: Register = (on, options) => {
   on("tool.call", {tool: "Edit"}, async ($, e, next) => {
     if (!off.has("plain-md") && breaksPlainMd(e.file_path, e.new_string))
       return {deny: MD_REASON};
+    if (!off.has("no-bullet") && hasBullet(e.new_string))
+      return {deny: BULLET_REASON};
     if (await fileLeaks($, e.file_path, e.new_string, g))
       return {deny: PRIVATE_REASON};
     stage.written.add(e.file_path);
