@@ -1,5 +1,10 @@
 import {expect, test} from "claude-code/testing";
-import {destructiveSteps, previewFiles, resolveDir} from "../hooks/git-preview";
+import {
+  destructiveSteps,
+  previewFiles,
+  previewQuestion,
+  resolveDir,
+} from "../hooks/git-preview";
 
 const CWD = "D:/ws/app";
 
@@ -94,4 +99,17 @@ test("git-preview runs a reset only when the person says Run", async ($, on) => 
   expect(asked[0]).toContain("src/a.ts");
   expect(ran).toEqual(["git reset --hard"]);
   expect(declined.deny).toContain("Declined");
+});
+
+test("git-preview puts each file on its own line and counts the rest", () => {
+  const files = Array.from({length: 12}, (_, i) => `src/f${i}.ts`);
+  expect(previewQuestion(files)).toBe(
+    [
+      "This git command would discard 12 file(s) or stash(es):",
+      ...files.slice(0, 10).map((f) => `  ${f}`),
+      "  and 2 more",
+      "",
+      "Run it?",
+    ].join("\n"),
+  );
 });

@@ -171,6 +171,7 @@ export const previewFiles = async (command: string, cwd: string, run: Run) => {
 
 export const previewQuestion = (files: string[]) => {
   const more = files.length - SHOWN;
-  const list = files.slice(0, SHOWN).join(", ");
-  return `This git command would discard ${files.length} file(s) or stash(es): ${list}${more > 0 ? `, and ${more} more` : ""}. Run it?`;
+  const list = files.slice(0, SHOWN).map((f) => `  ${f}`);
+  if (more > 0) list.push(`  and ${more} more`);
+  return `This git command would discard ${files.length} file(s) or stash(es):\n${list.join("\n")}\n\nRun it?`;
 };
