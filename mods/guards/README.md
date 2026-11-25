@@ -45,5 +45,5 @@ On Team, Enterprise and managed machines, `cc-plugin-sec-default` skips every `c
 - The allow rules in `~/.claude/settings.json` are not read, only those in the session folder's `.claude` settings.
 - no-credit reads the command line only, so a message passed with `git commit -F <file>` is not checked.
 - git-ask treats a move target it cannot resolve (`$HOME`, `~`, `%VAR%`) as a work repo and asks.
-- private-terms checks the repo of the session folder, not a `git -C` or `cd` target. A file a shell writes is caught at the next commit or push, not when it is written.
+- private-terms catches a file a shell writes at the next commit or push, not when it is written.
 - verify-first matches English and Vietnamese phrasings only.

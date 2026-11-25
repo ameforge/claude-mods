@@ -1,14 +1,10 @@
 import type {EngineInterface, Register} from "claude-code";
 import {allowRules, isAllowed, SETTINGS_FILES} from "./allowed";
-import {GIT_REASON, labOrigin, needsGitAsk, type Run} from "./git-ask";
-import {
-  PREVIEW_REASON,
-  previewFiles,
-  previewQuestion,
-  resolveDir,
-} from "./git-preview";
+import {type Run, resolveDir} from "./command-line";
+import {GIT_REASON, labOrigin, needsGitAsk} from "./git-ask";
+import {PREVIEW_REASON, previewFiles, previewQuestion} from "./git-preview";
 import {BULLET_REASON, hasBullet} from "./no-bullet";
-import {CREDIT_REASON, hasCredit, isCommitOrPr} from "./no-credit";
+import {CREDIT_REASON, commitOrPrDirs, hasCredit} from "./no-credit";
 import {breaksPlainMd, MD_REASON} from "./plain-md";
 import {
   fileDir,
@@ -45,37 +41,53 @@ const allowedHere = async (
   return isAllowed(command, allowRules(texts.map(String), tool));
 };
 
-// git-ask asks in its own dialog from tool.call: where cc-plugin-sec-default is
-// seated it skips a plugin's classic hooks and tool.check, so a returned ask
-// never reaches the person.
-const gitAsk = async (
+// What a guard decides: let the call on, deny it, or ask Run or Cancel first,
+// with the deny a Cancel gets.
+type Verdict = {deny: string} | {ask: string; declined: string} | undefined;
+type Guard = [name: string, check: () => Verdict | Promise<Verdict>];
+
+// The guards in order, minus those the off setting names. A deny ends the run;
+// an ask opens the mod's own dialog from tool.call (where cc-plugin-sec-default
+// is seated it skips a plugin's classic hooks and tool.check, so a returned ask
+// never reaches the person) unless the allow rules cover the command, and a
+// failed dialog counts as Cancel.
+const runGuards = async (
   $: EngineInterface,
-  tool: string,
-  command: string,
-  lab: RegExp | null,
+  guards: Guard[],
+  allowed: () => Promise<boolean>,
 ) => {
-  const run: Run = (argv) => $.process.run(argv);
-  if (!(await needsGitAsk(command, await $.session.cwd(), run, lab))) return;
-  if (await allowedHere($, tool, command)) return;
-  const answer = await $.ui
-    .ask(`${GIT_REASON}. Run it?`, ["Run", "Cancel"])
-    .catch(() => "Cancel");
-  return answer === "Run" ? undefined : {deny: `Declined: ${GIT_REASON}`};
+  for (const [, check] of guards) {
+    const verdict = await check();
+    if (verdict === undefined) continue;
+    if ("deny" in verdict) return verdict;
+    if (await allowed()) continue;
+    const answer = await $.ui
+      .ask(verdict.ask, ["Run", "Cancel"])
+      .catch(() => "Cancel");
+    if (answer !== "Run") return {deny: verdict.declined};
+  }
+  return undefined;
 };
 
-// git-preview asks the same way: the files a destructive git command would touch, Run or Cancel.
+const gitAsk = async (
+  $: EngineInterface,
+  command: string,
+  lab: RegExp | null,
+): Promise<Verdict> => {
+  const run: Run = (argv) => $.process.run(argv);
+  if (!(await needsGitAsk(command, await $.session.cwd(), run, lab))) return;
+  return {ask: `${GIT_REASON}. Run it?`, declined: `Declined: ${GIT_REASON}`};
+};
+
+// The files a destructive git command would touch.
 const gitPreview = async (
   $: EngineInterface,
-  tool: string,
   command: string,
-) => {
+): Promise<Verdict> => {
   const run: Run = (argv) => $.process.run(argv);
   const files = await previewFiles(command, await $.session.cwd(), run);
-  if (!files.length || (await allowedHere($, tool, command))) return;
-  const answer = await $.ui
-    .ask(previewQuestion(files), ["Run", "Cancel"])
-    .catch(() => "Cancel");
-  return answer === "Run" ? undefined : {deny: `Declined: ${PREVIEW_REASON}`};
+  if (!files.length) return;
+  return {ask: previewQuestion(files), declined: `Declined: ${PREVIEW_REASON}`};
 };
 
 // stage-guard state: per repo root, the files dirty at session start; the paths
@@ -95,10 +107,9 @@ const takeBaseline = async ($: EngineInterface, cwd: string, s: Stage) => {
 // files as the baseline, so only what this session wrote passes without asking.
 const stageGuard = async (
   $: EngineInterface,
-  tool: string,
   command: string,
   s: Stage,
-) => {
+): Promise<Verdict> => {
   const dir = sweepDir(command);
   if (dir === null) return;
   const target = resolveDir(dir, await $.session.cwd());
@@ -109,29 +120,34 @@ const stageGuard = async (
   const baseline = s.baseline.get(dirty.root) ?? new Set(dirty.files);
   s.baseline.set(dirty.root, baseline);
   const foreign = foreignFiles(dirty.files, baseline, s.written, dirty.root);
-  if (!foreign.length || (await allowedHere($, tool, command))) return;
-  const answer = await $.ui
-    .ask(stageQuestion(foreign), ["Run", "Cancel"])
-    .catch(() => "Cancel");
-  if (answer === "Run") return;
+  if (!foreign.length) return;
   const mine = dirty.files.filter((f) => !foreign.includes(f));
   return {
-    deny: `Declined: ${STAGE_REASON}. Stage this session's files by name${mine.length ? `: git add ${mine.join(" ")}` : ""}.`,
+    ask: stageQuestion(foreign),
+    declined: `Declined: ${STAGE_REASON}. Stage this session's files by name${mine.length ? `: git add ${mine.join(" ")}` : ""}.`,
   };
 };
 
 type Guarded = {lab: RegExp | null; terms: RegExp | null; words: string[]};
 
 // A commit or PR command line holding a private term, run in a lab repo.
-const commitLeaks = async ($: EngineInterface, command: string, g: Guarded) =>
-  isCommitOrPr(command) &&
-  leaksPrivate(
-    (argv) => $.process.run(argv),
-    command,
-    await $.session.cwd(),
-    g.terms,
-    g.lab,
-  );
+const commitLeaks = async ($: EngineInterface, command: string, g: Guarded) => {
+  const cwd = await $.session.cwd();
+  for (const dir of new Set(commitOrPrDirs(command))) {
+    const at = resolveDir(dir, cwd);
+    if (
+      await leaksPrivate(
+        (argv) => $.process.run(argv),
+        command,
+        at,
+        g.terms,
+        g.lab,
+      )
+    )
+      return true;
+  }
+  return false;
+};
 
 // A commit message or PR text holding a private term, or a commit or push that
 // would publish one from the repo's files: the deny, or undefined.
@@ -149,19 +165,21 @@ const gitLeaks = async ($: EngineInterface, command: string, g: Guarded) => {
 };
 
 // Text a Write or Edit adds to a file in a lab repo, holding a private term.
-const fileLeaks = (
+const fileLeaks = async (
   $: EngineInterface,
   path: string,
   text: string,
   g: Guarded,
-) =>
-  leaksPrivate(
+): Promise<Verdict> =>
+  (await leaksPrivate(
     (argv) => $.process.run(argv),
     text,
     fileDir(path),
     g.terms,
     g.lab,
-  );
+  ))
+    ? {deny: PRIVATE_REASON}
+    : undefined;
 
 export const register: Register = (on, options) => {
   // Guards named in the `off` setting stand aside, e.g. the asking ones in a vibe repo.
@@ -170,10 +188,11 @@ export const register: Register = (on, options) => {
   const privateTerms = String(options.privateTerms ?? "");
   const g: Guarded = {
     lab,
-    terms: off.has("private-terms") ? null : privateTermPattern(privateTerms),
-    words: off.has("private-terms") ? [] : termWords(privateTerms),
+    terms: privateTermPattern(privateTerms),
+    words: termWords(privateTerms),
   };
   const stage: Stage = {baseline: new Map(), written: new Set()};
+  const isOn = (guards: Guard[]) => guards.filter(([name]) => !off.has(name));
 
   // The baseline is taken once per repo, so a /clear keeps the first one.
   on("session.start", async ($, e, next) => {
@@ -181,65 +200,52 @@ export const register: Register = (on, options) => {
     return next(e);
   });
 
-  on("tool.call", {tool: "Bash"}, async ($, e, next) => {
-    if (!off.has("rg-only") && isRecursiveGrep(e.command))
-      return {deny: RG_REASON};
-    if (!off.has("no-credit") && hasCredit(e.command))
-      return {deny: CREDIT_REASON};
-    const leak = await gitLeaks($, e.command, g);
-    if (leak) return leak;
+  on("tool.call", {tool: ["Bash", "PowerShell"]}, async ($, e, next) => {
+    const {command, tool} = e;
+    let allowed: Promise<boolean> | undefined;
+    // shortcut: rg-only watches Bash only, as its README row says; add PowerShell if grep -r shows up there.
+    const guards = isOn([
+      [
+        "rg-only",
+        () =>
+          tool === "Bash" && isRecursiveGrep(command)
+            ? {deny: RG_REASON}
+            : undefined,
+      ],
+      [
+        "no-credit",
+        () => (hasCredit(command) ? {deny: CREDIT_REASON} : undefined),
+      ],
+      ["private-terms", () => gitLeaks($, command, g)],
+      ["git-preview", () => gitPreview($, command)],
+      ["stage-guard", () => stageGuard($, command, stage)],
+      ["git-ask", () => gitAsk($, command, lab)],
+    ]);
     return (
-      (off.has("git-preview")
-        ? undefined
-        : await gitPreview($, "Bash", e.command)) ??
-      (off.has("stage-guard")
-        ? undefined
-        : await stageGuard($, "Bash", e.command, stage)) ??
-      (off.has("git-ask")
-        ? undefined
-        : await gitAsk($, "Bash", e.command, lab)) ??
-      next(e)
+      (await runGuards($, guards, () => {
+        allowed ??= allowedHere($, tool, command);
+        return allowed;
+      })) ?? next(e)
     );
   });
 
-  on("tool.call", {tool: "PowerShell"}, async ($, e, next) => {
-    if (!off.has("no-credit") && hasCredit(e.command))
-      return {deny: CREDIT_REASON};
-    const leak = await gitLeaks($, e.command, g);
-    if (leak) return leak;
-    return (
-      (off.has("git-preview")
-        ? undefined
-        : await gitPreview($, "PowerShell", e.command)) ??
-      (off.has("stage-guard")
-        ? undefined
-        : await stageGuard($, "PowerShell", e.command, stage)) ??
-      (off.has("git-ask")
-        ? undefined
-        : await gitAsk($, "PowerShell", e.command, lab)) ??
-      next(e)
-    );
-  });
-
-  on("tool.call", {tool: "Write"}, async ($, e, next) => {
-    if (!off.has("plain-md") && breaksPlainMd(e.file_path, e.content))
-      return {deny: MD_REASON};
-    if (!off.has("no-bullet") && hasBullet(e.content))
-      return {deny: BULLET_REASON};
-    if (await fileLeaks($, e.file_path, e.content, g))
-      return {deny: PRIVATE_REASON};
-    stage.written.add(e.file_path);
-    return next(e);
-  });
-
-  on("tool.call", {tool: "Edit"}, async ($, e, next) => {
-    if (!off.has("plain-md") && breaksPlainMd(e.file_path, e.new_string))
-      return {deny: MD_REASON};
-    if (!off.has("no-bullet") && hasBullet(e.new_string))
-      return {deny: BULLET_REASON};
-    if (await fileLeaks($, e.file_path, e.new_string, g))
-      return {deny: PRIVATE_REASON};
-    stage.written.add(e.file_path);
+  on("tool.call", {tool: ["Write", "Edit"]}, async ($, e, next) => {
+    const path = e.file_path;
+    const text = e.tool === "Write" ? e.content : e.new_string;
+    const guards = isOn([
+      [
+        "plain-md",
+        () => (breaksPlainMd(path, text) ? {deny: MD_REASON} : undefined),
+      ],
+      [
+        "no-bullet",
+        () => (hasBullet(text) ? {deny: BULLET_REASON} : undefined),
+      ],
+      ["private-terms", () => fileLeaks($, path, text, g)],
+    ]);
+    const denied = await runGuards($, guards, async () => false);
+    if (denied) return denied;
+    stage.written.add(path);
     return next(e);
   });
 

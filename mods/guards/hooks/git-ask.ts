@@ -1,16 +1,10 @@
 // git-ask: commit, push and PR creation ask first, except in a lab repo
 // (origin owned by one of the labOwners setting). A command that moves elsewhere
 // (cd, git -C) skips the ask only when every target is a lab repo too.
-const GIT_GUARDED =
-  /\bgit\s+(?:-C\s+\S+\s+)?(?:commit|push)\b|\bgh\s+pr\s+create\b/;
-const MOVE_TARGET =
-  /(?:(?:^|[;&|(\s])(?:cd|pushd|Set-Location|sl)|\bgit\s+-C)\s+("[^"]*"|'[^']*'|[^\s;&|)]+)?/g;
+import {calls, gitCalls, type Run, resolveDir, runs} from "./command-line";
+
 export const GIT_REASON =
   "git commit / push / gh pr create outside a lab repo needs confirmation";
-
-export type Run = (
-  argv: readonly string[],
-) => Promise<{exitCode: number; stdout: string}>;
 
 // The origin pattern for owners listed with spaces or commas; null when none is set.
 export const labOrigin = (owners: string) => {
@@ -37,19 +31,15 @@ const isLabRepo = async (run: Run, lab: RegExp, dir: string) => {
   }
 };
 
-// The move targets as paths resolved against cwd; null when one cannot be read.
-const moveTargets = (command: string, cwd: string) => {
-  const dirs: string[] = [];
-  for (const m of command.matchAll(MOVE_TARGET)) {
-    const dir = m[1]?.replace(/^["']|["']$/g, "");
-    if (!dir || /[$`~%]/.test(dir)) return null;
-    const native = dir.replace(/^\/([a-zA-Z])(?=\/|$)/, "$1:"); // Git Bash /d/ws -> d:/ws
-    dirs.push(
-      /^(?:[a-zA-Z]:)?[\\/]/.test(native) ? native : `${cwd}/${native}`,
-    );
-  }
-  return dirs;
-};
+// The dirs the guarded commands run in, resolved against cwd.
+const guardedDirs = (command: string, cwd: string) => [
+  ...gitCalls(command)
+    .filter((c) => c.sub === "commit" || c.sub === "push")
+    .map((c) => resolveDir(c.dir, cwd)),
+  ...calls(command)
+    .filter((c) => runs(c, "gh", "pr", "create"))
+    .map((c) => resolveDir(c.dir, cwd)),
+];
 
 export const needsGitAsk = async (
   command: string,
@@ -57,10 +47,10 @@ export const needsGitAsk = async (
   run: Run,
   lab: RegExp | null,
 ) => {
-  if (!GIT_GUARDED.test(command)) return false;
-  const dirs = moveTargets(command, cwd);
-  if (!(lab && dirs)) return true;
-  for (const dir of [cwd, ...dirs]) {
+  const dirs = guardedDirs(command, cwd);
+  if (!dirs.length) return false;
+  if (!lab) return true;
+  for (const dir of new Set([cwd, ...dirs])) {
     if (!(await isLabRepo(run, lab, dir))) return true;
   }
   return false;

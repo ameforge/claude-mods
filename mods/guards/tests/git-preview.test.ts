@@ -1,9 +1,9 @@
 import {expect, test} from "claude-code/testing";
+import {resolveDir} from "../hooks/command-line";
 import {
   destructiveSteps,
   previewFiles,
   previewQuestion,
-  resolveDir,
 } from "../hooks/git-preview";
 
 const CWD = "D:/ws/app";
@@ -28,6 +28,14 @@ test("git-preview lists the files a destructive git command would touch", async 
   expect(await files("git restore src/b.ts")).toEqual(["src/b.ts"]);
   expect(await files("git stash -u")).toContain("tmp.log");
   expect(await files("git status && git clean -fd")).toEqual(["tmp.log"]);
+});
+
+test("git-preview names a renamed file by its new path", async () => {
+  const renamed = () =>
+    Promise.resolve({exitCode: 0, stdout: "R  old.ts -> new.ts\n"});
+  expect(await previewFiles("git reset --hard", CWD, renamed)).toEqual([
+    "new.ts",
+  ]);
 });
 
 test("git-preview stays quiet on commands that keep the work tree", () => {

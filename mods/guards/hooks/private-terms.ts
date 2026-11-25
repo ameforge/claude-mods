@@ -1,6 +1,7 @@
 // private-terms: work identifiers (ticket prefixes, client names, work domains)
 // stay out of a lab repo, whose code is public. The terms come from the
 // privateTerms setting, so they are never written into this code either.
+import {gitCalls, type Run, resolveDir} from "./command-line";
 
 export const PRIVATE_REASON =
   "This is a lab repo, so its content is public, and the text holds a private term from the " +
@@ -24,10 +25,6 @@ export const privateTermPattern = (terms: string) => {
 // The folder that holds a file, for either slash.
 export const fileDir = (path: string) =>
   path.replace(/[\\/][^\\/]*$/, "") || ".";
-
-type Run = (
-  argv: readonly string[],
-) => Promise<{exitCode: number; stdout: string}>;
 
 // The origin of the repo holding dir, tried up to three parents up so a file
 // in a folder not made yet still counts; empty when there is none.
@@ -64,31 +61,24 @@ export const leaksPrivate = async (
     terms && lab && terms.test(text) && lab.test(await repoOrigin(run, dir)),
   );
 
-const GIT_PUBLISH = /\bgit\s+(?:-C\s+\S+\s+)?(commit|push)\b/;
-
 export const repoReason = (places: string[]) =>
   `${PRIVATE_REASON} Found in: ${places.slice(0, 10).join(", ")}.`;
 
 // git's empty tree, the base to diff against before the first commit.
 const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
-// Where a commit or push in a lab repo would publish a private term: lines
-// added since HEAD (staged or not, since `git add -A && git commit` stages in
-// the same command), untracked files (so a file a shell script wrote counts)
-// and, for a push, the patches of commits no remote has yet. Text already in
-// HEAD is not scanned again.
-// shortcut: checks the session folder's repo only, not a cd or git -C target.
-export const repoLeaks = async (
+// In one repo: lines added since HEAD (staged or not, since `git add -A && git
+// commit` stages in the same command), untracked files (so a file a shell
+// script wrote counts) and, for a push, the patches of commits no remote has
+// yet. Text already in HEAD is not scanned again.
+const scanRepo = async (
   run: Run,
-  command: string,
   dir: string,
+  isPush: boolean,
   words: string[],
-  terms: RegExp | null,
-  lab: RegExp | null,
+  terms: RegExp,
+  places: Set<string>,
 ) => {
-  const verb = GIT_PUBLISH.exec(command)?.[1];
-  if (!(verb && terms) || !lab?.test(await repoOrigin(run, dir))) return [];
-  const places = new Set<string>();
   const diff = (base: string) =>
     run(["git", "-C", dir, "diff", "-U0", "--no-color", "--no-ext-diff", base]);
   let changed = await diff("HEAD");
@@ -125,7 +115,7 @@ export const repoLeaks = async (
       if (m?.[1] && terms.test(m[2] ?? "")) places.add(m[1]);
     }
   }
-  if (verb === "push") {
+  if (isPush) {
     const log = await run([
       "git",
       "-C",
@@ -147,6 +137,30 @@ export const repoLeaks = async (
       )
         places.add(`commit ${commit}`);
     }
+  }
+};
+
+// Where a commit or push in a lab repo would publish a private term. Each repo
+// a commit or push runs in is scanned once, following git -C and cd.
+export const repoLeaks = async (
+  run: Run,
+  command: string,
+  cwd: string,
+  words: string[],
+  terms: RegExp | null,
+  lab: RegExp | null,
+) => {
+  if (!(terms && lab)) return [];
+  const isPush = new Map<string, boolean>();
+  for (const {dir, sub} of gitCalls(command)) {
+    if (sub !== "commit" && sub !== "push") continue;
+    const at = resolveDir(dir, cwd);
+    isPush.set(at, isPush.get(at) === true || sub === "push");
+  }
+  const places = new Set<string>();
+  for (const [dir, push] of isPush) {
+    if (lab.test(await repoOrigin(run, dir)))
+      await scanRepo(run, dir, push, words, terms, places);
   }
   return [...places];
 };

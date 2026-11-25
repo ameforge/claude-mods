@@ -1,8 +1,7 @@
 // stage-guard: in a work tree several sessions share, `git add -A` or `git commit -a`
 // would sweep in another session's work. The files dirty when this session started
 // and never written by it through Write or Edit count as foreign.
-import type {Run} from "./git-ask";
-import {gitCalls} from "./git-preview";
+import {gitCalls, type Run, statusFiles} from "./command-line";
 
 export const STAGE_REASON =
   "this git command would also stage files changed before this session that it did not edit";
@@ -40,11 +39,7 @@ export const dirtyFiles = async (run: Run, dir: string) => {
     "--untracked-files=all",
   ]);
   if (status.exitCode !== 0) return null;
-  const files = status.stdout
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => l.slice(3).replace(/^.* -> /, ""));
-  return {files, root};
+  return {files: statusFiles(status.stdout), root};
 };
 
 // The dirty files that were dirty at the baseline and that the session never wrote.

@@ -19,6 +19,7 @@ test("no-credit blocks attribution in a commit or PR", async ($, on) => {
     `git commit -m "fix: x\n\n${TRAILER}"`,
     'git commit -m "fix: x" -m "Generated with [Claude Code](https://claude.com)"',
     `gh pr create --title x --body "done \u{1F916}"`,
+    `git -c commit.gpgsign=false commit -m "fix: x\n\n${TRAILER}"`,
   ]) {
     const result = await $.tool.call({command, tool: "Bash"});
     expect(result.deny).toContain("no attribution");

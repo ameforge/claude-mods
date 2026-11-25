@@ -157,3 +157,30 @@ test(
     expect(ran).toEqual(["Bash"]);
   },
 );
+
+test(
+  "private-terms judges the repo a commit runs in, through git -C, cd and git -c",
+  {options: {...options, off: "git-ask"}},
+  async ($, on) => {
+    const ran = engine(on, WORK);
+    const intoLab = await $.tool.call({
+      command: `git -c core.x=y -C ${LAB} commit -m "fix: ABC-7"`,
+      tool: "Bash",
+    });
+    expect(intoLab.deny).toContain("private term");
+    expect(ran).toEqual([]);
+  },
+);
+
+test(
+  "private-terms lets a commit through when a cd leaves the lab repo",
+  {options: {...options, off: "git-ask"}},
+  async ($, on) => {
+    const ran = engine(on, LAB);
+    await $.tool.call({
+      command: `cd ${WORK} && git commit -m "fix: ABC-7"`,
+      tool: "Bash",
+    });
+    expect(ran).toEqual(["Bash"]);
+  },
+);

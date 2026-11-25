@@ -24,6 +24,7 @@ const ask = (command: string, cwd: string) =>
 test("git-ask asks outside a lab repo", async () => {
   expect(await ask("git commit -m x", WORK)).toBe(true);
   expect(await ask("gh pr create --fill", WORK)).toBe(true);
+  expect(await ask("git -c user.name=x commit -m y", WORK)).toBe(true);
 });
 
 test("git-ask asks when a lab command moves to another repo", async () => {
@@ -32,6 +33,8 @@ test("git-ask asks when a lab command moves to another repo", async () => {
     `git -C ${WORK} commit -m x`,
     "cd $HOME/app && git push",
     "cd ~/app && git push",
+    `(cd ${WORK} && git push)`,
+    `git -c core.x=y -C ${WORK} commit -m x`,
   ]) {
     expect(await ask(command, LAB)).toBe(true);
   }
