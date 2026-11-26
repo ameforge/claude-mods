@@ -7,6 +7,10 @@
     {"name": "cache-keepalive", "source": "./mods/cache-keepalive"},
     {"name": "guards", "source": "./mods/guards"},
     {"name": "port-guard", "source": "./mods/port-guard"},
+    {
+      "name": "property-tests",
+      "source": "./mods/property-tests"
+    },
     {"name": "rename-jira-stamp", "source": "./mods/rename-jira-stamp"},
     {"name": "whoami", "source": "./mods/whoami"}
   ]
