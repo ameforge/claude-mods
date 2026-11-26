@@ -4,8 +4,14 @@ import {expect, mock, type TestBody, test} from "claude-code/testing";
 const MINUTE = 60_000;
 
 // The engine beneath the mod: a 1h-tier transcript tail, and a fork that
-// reads `cacheRead` tokens from the cache; the forks are counted.
-const engine = (on: On, cacheRead = 100_000) => {
+// reads `cacheRead` tokens from the cache; the forks are counted. With
+// `fiveMinuteAt`, the transcript at that path wrote the 5m tier instead.
+const engine = (
+  on: On,
+  cacheRead = 100_000,
+  env: Record<string, string> = {},
+  fiveMinuteAt?: string,
+) => {
   const forks: string[] = [];
   on("session.start", (_$, e) => ({cwd: e.cwd}));
   on("turn.start", (_$, e) => ({turnId: e.turnId}));
@@ -13,11 +19,15 @@ const engine = (on: On, cacheRead = 100_000) => {
   on("command.register", (_$, e) => ({value: {command: e.name}}));
   on("session.id", () => ({value: "session-1"}));
   on("session.cwd", () => ({value: "D:/ws/demo"}));
-  on("env.get", () => ({value: undefined}));
+  on("env.get", (_$, e) => ({value: env[e.name]}));
   on("process.run", (_$, e) => {
-    // rg -n -o over a transcript whose second row wrote the 1h cache.
+    const tier =
+      fiveMinuteAt !== undefined && e.argv[e.argv.length - 1] === fiveMinuteAt
+        ? "5m"
+        : "1h";
+    // rg -n -o over a transcript whose second row wrote the cache.
     const stdout = e.argv.includes("-o")
-      ? '2:"ephemeral_1h_input_tokens":5'
+      ? `2:"ephemeral_${tier}_input_tokens":5`
       : "";
     return {
       value: {
@@ -89,5 +99,20 @@ test("stops when a refresh finds the cache already cold", async ($, on) => {
   await oneTurn($);
 
   await clock.advance(5 * 60 * MINUTE);
+  expect(forks.length).toBe(1);
+});
+
+test("reads the cache tier from the transcript under CLAUDE_CONFIG_DIR", async ($, on) => {
+  const clock = mock.clock(on);
+  const {forks} = engine(
+    on,
+    100_000,
+    {CLAUDE_CONFIG_DIR: "C:/cfg", USERPROFILE: "C:/Users/me"},
+    "C:/cfg/projects/D--ws-demo/session-1.jsonl",
+  );
+  await oneTurn($);
+
+  // The 5m tier refreshes a minute before its expiry.
+  await clock.advance(5 * MINUTE);
   expect(forks.length).toBe(1);
 });

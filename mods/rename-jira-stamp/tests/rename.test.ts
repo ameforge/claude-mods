@@ -17,6 +17,9 @@ type EngineOptions = {
   gitBranch?: string;
   // A command name another plugin already owns.
   takenName?: string;
+  env?: Record<string, string>;
+  // The only path rg finds the transcript at, when set.
+  transcriptAt?: string;
 };
 
 // The engine beneath the mod: one session titled `title` whose transcript
@@ -38,8 +41,22 @@ const engine = (on: On, options: EngineOptions = {}) => {
   });
   on("session.id", () => ({value: "session-1"}));
   on("session.cwd", () => ({value: "D:/ws/demo"}));
-  on("env.get", () => ({value: undefined}));
+  on("env.get", (_$, e) => ({value: options.env?.[e.name]}));
   on("process.run", (_$, e) => {
+    if (
+      options.transcriptAt !== undefined &&
+      e.argv[e.argv.length - 1] !== options.transcriptAt
+    ) {
+      return {
+        value: {
+          exitCode: 2,
+          isStderrTruncated: false,
+          isStdoutTruncated: false,
+          stderr: "no such file",
+          stdout: "",
+        },
+      };
+    }
     const transcript = [
       ...(options.transcriptKeys ?? []).map((key) =>
         JSON.stringify({
@@ -151,4 +168,16 @@ test("a taken command name is a toast, not a failed session start", async ($, on
     surface: null,
   });
   expect(toasts[0]).toContain("could not register");
+});
+
+test("reads the transcript under CLAUDE_CONFIG_DIR", async ($, on) => {
+  const clock = mock.clock(on);
+  const {commands} = engine(on, {
+    env: {CLAUDE_CONFIG_DIR: "C:/cfg", USERPROFILE: "C:/Users/me"},
+    title: "",
+    transcriptAt: "C:/cfg/projects/D--ws-demo/session-1.jsonl",
+    transcriptKeys: ["ABC-808"],
+  });
+  await runCommand($, clock);
+  expect(commands[0]).toMatch(/^rename ABC-808_\d{8}_\d{6}$/);
 });

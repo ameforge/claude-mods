@@ -13,7 +13,9 @@ const homeDir = async ($: EngineInterface) => {
 // carries the path, does not reach a plugin an organization's settings skip.
 const transcriptPath = async ($: EngineInterface) => {
   const project = (await $.session.cwd()).replace(/[^a-zA-Z0-9]/g, "-");
-  return `${await homeDir($)}/.claude/projects/${project}/${await $.session.id()}.jsonl`;
+  const configDir =
+    (await $.env.get("CLAUDE_CONFIG_DIR")) ?? `${await homeDir($)}/.claude`;
+  return `${configDir}/projects/${project}/${await $.session.id()}.jsonl`;
 };
 
 // The transcript rows that match `pattern`. rg reads a transcript of any size

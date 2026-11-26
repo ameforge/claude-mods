@@ -100,7 +100,7 @@ flowchart TD
 | ----------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Arm and track idle                              | `turn.complete`, `turn.start` hooks, `$.clock.every`       | none                                                                                             |
 | Context threshold                               | `$.session.usage()`                                        | none                                                                                             |
-| Find cache tier, at turn end and again at [54m] | `$.process.run(['rg', '-n', '-o', ...])`, else `$.fs.read` | session transcript `.jsonl`, its path from `classic.Stop` or derived from the cwd and session id |
+| Find cache tier, at turn end and again at [54m] | `$.process.run(['rg', '-n', '-o', ...])`, else `$.fs.read` | session transcript `.jsonl`, its path from `classic.Stop` or derived from the cwd and session id under `CLAUDE_CONFIG_DIR` (else `~/.claude`) |
 | Write handoff                                   | `$.model.fork`                                             | none                                                                                             |
 | Keep handoff                                    | `$.store`                                                  | none, local to Claude Code                                                                       |
 | Read old name                                   | `$.process.run(['rg', ...])`, else `$.fs.read`             | transcript `custom-title` rows                                                                   |

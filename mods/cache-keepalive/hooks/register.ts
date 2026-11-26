@@ -72,8 +72,10 @@ const transcriptPath = async ($: EngineInterface) => {
   if (idle.transcriptPath !== undefined) return idle.transcriptPath;
   const home =
     (await $.env.get("USERPROFILE")) ?? (await $.env.get("HOME")) ?? "";
+  const configDir =
+    (await $.env.get("CLAUDE_CONFIG_DIR")) ?? `${home}/.claude`;
   const project = (await $.session.cwd()).replace(/[^a-zA-Z0-9]/g, "-");
-  return `${home}/.claude/projects/${project}/${await $.session.id()}.jsonl`;
+  return `${configDir}/projects/${project}/${await $.session.id()}.jsonl`;
 };
 
 // The fields that decide the tier, as `rg -n -o` prints them: `<row>:<field>`.

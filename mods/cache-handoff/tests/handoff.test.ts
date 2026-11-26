@@ -24,6 +24,8 @@ type EngineOptions = {
   forkText?: string;
   stored?: Record<string, unknown>;
   env?: Record<string, string>;
+  // The only path rg finds the transcript at, when set.
+  transcriptAt?: string;
   // Runs while the fork is answering, as a person typing meanwhile.
   duringFork?: () => Promise<void>;
 };
@@ -116,6 +118,20 @@ const engine = (
   });
   on("store.keys", () => ({value: [...store.keys()]}));
   on("process.run", (_$, e) => {
+    if (
+      options.transcriptAt !== undefined &&
+      e.argv[e.argv.length - 1] !== options.transcriptAt
+    ) {
+      return {
+        value: {
+          exitCode: 2,
+          isStderrTruncated: false,
+          isStdoutTruncated: false,
+          stderr: "no such file",
+          stdout: "",
+        },
+      };
+    }
     const transcript = [
       ...(options.transcriptKeys ?? []).map((key) =>
         JSON.stringify({
@@ -379,6 +395,18 @@ test("does nothing at all on the 5 minute cache tier", async ($, on) => {
   expect(store.size).toBe(0);
   expect(commands.length).toBe(0);
   expect(statuses.length).toBe(0);
+});
+
+test("reads the cache tier from the transcript under CLAUDE_CONFIG_DIR", async ($, on) => {
+  const clock = mock.clock(on);
+  const {forks} = engine(on, cacheWrite("5m"), {
+    env: {CLAUDE_CONFIG_DIR: "C:/cfg", USERPROFILE: "C:/Users/me"},
+    transcriptAt: "C:/cfg/projects/D--ws-demo/session-1.jsonl",
+  });
+  await oneTurn($);
+
+  await clock.advance(2 * 60 * MINUTE);
+  expect(forks.length).toBe(0);
 });
 
 test("a subagent's newer 1h write does not hide the main thread's 5m tier", async ($, on) => {
