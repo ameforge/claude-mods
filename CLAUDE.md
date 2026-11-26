@@ -24,4 +24,4 @@ Load the `plugin-authoring` skill to build it. A mod built in a session lands in
 
 - A change to behaviour bumps `version` in that mod's `.claude-plugin/plugin.json` and gets a test in `mods/<name>/tests/`, driven by a fake engine like the existing tests, with `mock.clock` where timing matters.
 - Keep the mod's `README.md` (user guide) and `FLOW.md` (decision flow), where present, in step with the code.
-- `cache-handoff` and `cache-keepalive` both time the same idle gap of the prompt cache. A change to either one's timing must account for the other: today `cache-handoff` still clears at 114 minutes even when `cache-keepalive` kept the cache warm.
+- `cache-handoff` and `cache-keepalive` both time the same idle gap of the prompt cache. A change to either one's timing must account for the other: `cache-handoff` hooks `model.fork` and moves its cold time to one TTL after any fork that read the cache, which is how a `cache-keepalive` refresh delays the clear.

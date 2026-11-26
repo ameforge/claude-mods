@@ -12,6 +12,9 @@ const POLL_MS = 30_000;
 // A conversation smaller than this costs little to re-cache, so the mod
 // leaves it alone.
 const MIN_CONTEXT_TOKENS = 50_000;
+// A fork that read at least this much from the cache found it warm, as
+// cache-keepalive judges its own refresh.
+const MIN_CACHE_READ_TOKENS = 1_000;
 // Rows read back from the transcript's end when looking for the cache tier.
 const TIER_SCAN_ROWS = 400;
 // Stored handoffs nobody came back for are dropped after this long.
@@ -50,8 +53,9 @@ const config = {
 
 // The main loop's idle clock; the module's own, so a reload starts it over.
 const idle = {
-  // The handoff fork read the cache and so refreshed it: the cache goes cold
-  // one TTL after the later of this and the last turn.
+  // A fork read the cache and so refreshed it, the handoff's own or another
+  // plugin's such as cache-keepalive's: the cache goes cold one TTL after the
+  // later of this and the last turn.
   forkedAt: undefined as number | undefined,
   isArmed: false,
   isColdHandled: false,
@@ -604,6 +608,18 @@ export const register: Register = (on, options) => {
     }
     return next(e);
   });
+
+  on("model.fork", async ($, e, next) => {
+    const at = await $.clock.now();
+    const result = await next(e);
+    const reply = result.value;
+    if (
+      reply?.isAnswered &&
+      reply.usage.cache_read_input_tokens >= MIN_CACHE_READ_TOKENS
+    )
+      idle.forkedAt = Math.max(idle.forkedAt ?? 0, at);
+    return result;
+  }).catch((_$, e, next) => next(e));
 
   on("classic.Stop", (_$, e, next) => {
     idle.transcriptPath = e.transcript_path;

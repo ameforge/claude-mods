@@ -1,5 +1,11 @@
 import type {On} from "claude-code";
-import {expect, mock, type TestBody, test} from "claude-code/testing";
+import {
+  expect,
+  mock,
+  type Plugin,
+  type TestBody,
+  test,
+} from "claude-code/testing";
 
 const MINUTE = 60_000;
 // How the person typing a slash command reaches command.run.
@@ -22,6 +28,8 @@ type EngineOptions = {
   takenName?: string;
   contextTokens?: number;
   forkText?: string;
+  // Cache tokens each fork reads; 0 leaves the cold time where it was.
+  forkCacheRead?: number;
   stored?: Record<string, unknown>;
   env?: Record<string, string>;
   // The only path rg finds the transcript at, when set.
@@ -168,7 +176,7 @@ const engine = (
         text: forkText,
         usage: {
           cache_creation_input_tokens: 0,
-          cache_read_input_tokens: 0,
+          cache_read_input_tokens: options.forkCacheRead ?? 0,
           input_tokens: 0,
           output_tokens: 0,
         },
@@ -270,6 +278,41 @@ test("writes the handoff, then opens a new named conversation once the refreshed
   });
   expect(prompts[1]).toBe("and then");
 });
+
+// Stands in for cache-keepalive: one refresh fork 55 minutes after a turn.
+const keepalive: Plugin = {
+  name: "keepalive-stub",
+  register(on) {
+    on("turn.complete", ($, e, next) => {
+      const timer = $.clock.every(55 * 60_000, () => {
+        timer.cancel();
+        void $.model.fork({prompt: "Keep-alive ping"});
+      });
+      return next(e);
+    });
+  },
+};
+
+test(
+  "a fork another plugin makes at 55 minutes moves the cold time to 115",
+  {plugins: [keepalive]},
+  async ($, on) => {
+    const clock = mock.clock(on);
+    const {commands, forks, store} = engine(on, cacheWrite("1h"), {
+      forkCacheRead: 90_000,
+    });
+    await oneTurn($);
+    await clock.advance(55 * MINUTE);
+    expect(store.size).toBe(1);
+    expect(forks.length).toBe(2);
+
+    await clock.advance(59 * MINUTE + 30_000);
+    expect(commands.length).toBe(0);
+
+    await clock.advance(MINUTE);
+    expect(commands[0]).toBe("clear");
+  },
+);
 
 // A conversation handed off again keeps one stamp, whatever earlier
 // handoffs left on its title.

@@ -39,6 +39,8 @@ The handoff is written once, at step 1, by a fork that reads the warm cache. Ste
 
 The two steps are apart on purpose. Between [54m] and [114m] the cache is still warm, so coming back then continues the full conversation at the cheap price with every detail kept. The mod switches to a new conversation only at cold, when continuing the old one would mean re-caching the whole transcript.
 
+Any other fork that reads the warm cache refreshes it too, such as a cache-keepalive refresh, so the mod hooks `model.fork` and moves cold to one TTL after the latest such fork.
+
 Nothing is lost by the switch: the old conversation is left as it was, and `claude --resume <old id>` opens it with every detail.
 
 ## Decision flow
@@ -59,7 +61,7 @@ flowchart TD
     H --> I{Reply is NO_HANDOFF?}
     I -- yes --> Z2[Save nothing,<br/>do nothing at cold]
     I -- no --> J[Save handoff to $.store<br/>keyed by session id]
-    K{"Cold yet?<br/>[114m] after a fork, [60m] without one"}
+    K{"Cold yet?<br/>one TTL after the latest fork that read the cache,<br/>[60m] without one"}
     J --> K
     K -- no --> K
     K -- yes --> L{Cold: coldAction setting<br/>in /plugin configure}
