@@ -90,25 +90,11 @@ const gitPreview = async (
   return {ask: previewQuestion(files), declined: `Declined: ${PREVIEW_REASON}`};
 };
 
-// stage-guard state: per repo root, the files dirty at session start; the paths
-// this session wrote through Write or Edit.
-type Stage = {baseline: Map<string, Set<string>>; written: Set<string>};
-
-const takeBaseline = async ($: EngineInterface, cwd: string, s: Stage) => {
-  const dirty = await dirtyFiles((argv) => $.process.run(argv), cwd).catch(
-    () => null,
-  );
-  if (dirty && !s.baseline.has(dirty.root))
-    s.baseline.set(dirty.root, new Set(dirty.files));
-};
-
-// A sweep that would stage foreign files asks first. A repo first seen at the sweep
-// (another repo than the session's start, through git -C or cd) takes its dirty
-// files as the baseline, so only what this session wrote passes without asking.
+// A sweep that would stage files this session did not write asks first.
 const stageGuard = async (
   $: EngineInterface,
   command: string,
-  s: Stage,
+  written: Set<string>,
 ): Promise<Verdict> => {
   const dir = sweepDir(command);
   if (dir === null) return;
@@ -117,9 +103,7 @@ const stageGuard = async (
     () => null,
   );
   if (!dirty) return;
-  const baseline = s.baseline.get(dirty.root) ?? new Set(dirty.files);
-  s.baseline.set(dirty.root, baseline);
-  const foreign = foreignFiles(dirty.files, baseline, s.written, dirty.root);
+  const foreign = foreignFiles(dirty.files, written, dirty.root);
   if (!foreign.length) return;
   const mine = dirty.files.filter((f) => !foreign.includes(f));
   return {
@@ -191,14 +175,9 @@ export const register: Register = (on, options) => {
     terms: privateTermPattern(privateTerms),
     words: termWords(privateTerms),
   };
-  const stage: Stage = {baseline: new Map(), written: new Set()};
+  // stage-guard: the paths this session wrote through Write or Edit.
+  const written = new Set<string>();
   const isOn = (guards: Guard[]) => guards.filter(([name]) => !off.has(name));
-
-  // The baseline is taken once per repo, so a /clear keeps the first one.
-  on("session.start", async ($, e, next) => {
-    await takeBaseline($, e.cwd, stage);
-    return next(e);
-  });
 
   on("tool.call", {tool: ["Bash", "PowerShell"]}, async ($, e, next) => {
     const {command, tool} = e;
@@ -218,7 +197,7 @@ export const register: Register = (on, options) => {
       ],
       ["private-terms", () => gitLeaks($, command, g)],
       ["git-preview", () => gitPreview($, command)],
-      ["stage-guard", () => stageGuard($, command, stage)],
+      ["stage-guard", () => stageGuard($, command, written)],
       ["git-ask", () => gitAsk($, command, lab)],
     ]);
     return (
@@ -245,7 +224,7 @@ export const register: Register = (on, options) => {
     ]);
     const denied = await runGuards($, guards, async () => false);
     if (denied) return denied;
-    stage.written.add(path);
+    written.add(path);
     return next(e);
   });
 

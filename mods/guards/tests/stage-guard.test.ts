@@ -35,12 +35,43 @@ test("stage-guard reads file names with spaces as the session wrote them", () =>
   ).toEqual(["moved here.ts", "old.ts", "my file.txt", "sub dir/ü.ts"]);
 });
 
-test("stage-guard counts as foreign only files dirty at start and never written", () => {
-  const baseline = new Set(["old.ts", "shared.ts"]);
+test("stage-guard counts as foreign every dirty file the session never wrote", () => {
   const written = new Set(["D:\\ws\\app\\shared.ts", "D:\\ws\\app\\new.ts"]);
   expect(
-    foreignFiles(["old.ts", "shared.ts", "new.ts"], baseline, written, ROOT),
-  ).toEqual(["old.ts"]);
+    foreignFiles(["old.ts", "Shared.ts", "new.ts", "later.ts"], written, ROOT),
+  ).toEqual(["old.ts", "later.ts"]);
+});
+
+// Both sessions start on a clean tree; the other one then edits later.ts.
+test("stage-guard asks about a file another session changed after this one started", async ($, on) => {
+  const asked: string[] = [];
+  let dirty = "";
+  on("tool.call", (_$, e) => {
+    if (e.tool !== "AskUserQuestion") return {result: "ok"} as never;
+    const question = e.questions[0]?.question ?? "";
+    asked.push(question);
+    return {
+      result: {answers: {[question]: "Cancel"}, questions: e.questions},
+    } as never;
+  });
+  on("session.start", (_$, e) => ({cwd: e.cwd}) as never);
+  on("session.cwd", () => ({value: ROOT}) as never);
+  on("process.run", (_$, e) => {
+    const stdout = e.argv.includes("rev-parse") ? `${ROOT}\n` : dirty;
+    return {value: {exitCode: 0, stderr: "", stdout}} as never;
+  });
+  await $.session.start({cwd: ROOT, isInteractive: true, surface: null});
+  await $.tool.call({
+    content: "x",
+    file_path: `${ROOT}/mine.ts`,
+    tool: "Write",
+  });
+  dirty = "?? mine.ts\0 M later.ts\0";
+  const declined = await $.tool.call({command: "git add -A", tool: "Bash"});
+  expect(asked.length).toBe(1);
+  expect(asked[0]).toContain("later.ts");
+  expect(asked[0]).not.toContain("mine.ts");
+  expect(declined.deny).toContain("git add mine.ts");
 });
 
 // A fake repo: old.ts was dirty before the session; the session then edits new.ts.
@@ -75,9 +106,9 @@ test("stage-guard asks before git add -A sweeps in another session's file", asyn
   expect(ran).toEqual(["git add new.ts"]);
 });
 
-// No session.start for this repo: the sweep itself takes the baseline, so only
-// the file the session wrote is let through without asking.
-test("stage-guard asks in a repo first seen at the sweep", async ($, on) => {
+// A repo other than the session's cwd, reached through git -C: only the file
+// the session wrote is let through without asking.
+test("stage-guard asks in a repo reached through git -C", async ($, on) => {
   const asked: string[] = [];
   on("tool.call", (_$, e) => {
     if (e.tool !== "AskUserQuestion") return {result: "ok"} as never;

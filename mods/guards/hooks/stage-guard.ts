@@ -1,10 +1,10 @@
 // stage-guard: in a work tree several sessions share, `git add -A` or `git commit -a`
-// would sweep in another session's work. The files dirty when this session started
-// and never written by it through Write or Edit count as foreign.
+// would sweep in another session's work. Every dirty file this session never wrote
+// through Write or Edit counts as foreign, however long it has been dirty.
 import {gitCalls, type Run, statusFiles} from "./command-line";
 
 export const STAGE_REASON =
-  "this git command would also stage files changed before this session that it did not edit";
+  "this git command would also stage files this session did not edit";
 const SHOWN = 10;
 
 const slash = (path: string) => path.replace(/\\/g, "/");
@@ -41,10 +41,9 @@ export const dirtyFiles = async (run: Run, dir: string) => {
   return {files: statusFiles(status.stdout), root};
 };
 
-// The dirty files that were dirty at the baseline and that the session never wrote.
+// The dirty files the session never wrote.
 export const foreignFiles = (
   files: string[],
-  baseline: Set<string>,
   written: Set<string>,
   root: string,
 ) => {
@@ -55,11 +54,11 @@ export const foreignFiles = (
       .filter((p) => p.toLowerCase().startsWith(prefix))
       .map((p) => p.slice(prefix.length).toLowerCase()),
   );
-  return files.filter((f) => baseline.has(f) && !mine.has(f.toLowerCase()));
+  return files.filter((f) => !mine.has(f.toLowerCase()));
 };
 
 export const stageQuestion = (foreign: string[]) => {
   const more = foreign.length - SHOWN;
   const list = foreign.slice(0, SHOWN).join(", ");
-  return `This git command would also stage ${foreign.length} file(s) changed before this session that it did not edit: ${list}${more > 0 ? `, and ${more} more` : ""}. Run it?`;
+  return `This git command would also stage ${foreign.length} file(s) this session did not edit: ${list}${more > 0 ? `, and ${more} more` : ""}. Run it?`;
 };
