@@ -47,7 +47,7 @@ test("stage-guard skips its ask when the repo allows the command", async ($, on)
   });
   on("process.run", (_$, e) => {
     const top = e.argv.includes("rev-parse");
-    const stdout = top ? `${ROOT}\n` : " M old.ts\n";
+    const stdout = top ? `${ROOT}\n` : " M old.ts\0";
     return {value: {exitCode: 0, stderr: "", stdout}} as never;
   });
   await $.session.start({cwd: ROOT, isInteractive: true, surface: null});

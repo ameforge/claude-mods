@@ -61,9 +61,16 @@ export const gitCalls = (command: string): GitCall[] =>
     return [{args: words.slice(i + 1), dir, sub: words[i] ?? ""}];
   });
 
-// The paths in `git status --porcelain=v1` output; a rename lists its new path.
-export const statusFiles = (stdout: string) =>
-  stdout
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => line.slice(3).replace(/^.* -> /, ""));
+// The paths in `git status --porcelain=v1 -z` output, unquoted; a rename or
+// copy lists its new path, then its old path as a separate entry.
+export const statusFiles = (stdout: string) => {
+  const files: string[] = [];
+  const entries = stdout.split("\0");
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i] ?? "";
+    if (!entry) continue;
+    files.push(entry.slice(3));
+    if (/[RC]/.test(entry.slice(0, 2))) i++;
+  }
+  return files;
+};

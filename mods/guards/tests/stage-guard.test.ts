@@ -1,4 +1,5 @@
 import {expect, test} from "claude-code/testing";
+import {statusFiles} from "../hooks/command-line";
 import {foreignFiles, sweepDir} from "../hooks/stage-guard";
 
 const ROOT = "D:/ws/app";
@@ -24,6 +25,16 @@ test("stage-guard spots the commands that sweep the whole tree", () => {
   }
 });
 
+// Real `git status --porcelain=v1 -z` output: no quotes around a name with a
+// space or a non-ASCII letter, and a rename's old path as its own entry.
+test("stage-guard reads file names with spaces as the session wrote them", () => {
+  expect(
+    statusFiles(
+      "R  moved here.ts\0mv me.ts\0 M old.ts\0?? my file.txt\0?? sub dir/ü.ts\0",
+    ),
+  ).toEqual(["moved here.ts", "old.ts", "my file.txt", "sub dir/ü.ts"]);
+});
+
 test("stage-guard counts as foreign only files dirty at start and never written", () => {
   const baseline = new Set(["old.ts", "shared.ts"]);
   const written = new Set(["D:\\ws\\app\\shared.ts", "D:\\ws\\app\\new.ts"]);
@@ -37,7 +48,7 @@ test("stage-guard asks before git add -A sweeps in another session's file", asyn
   const answers = ["Cancel"];
   const asked: string[] = [];
   const ran: string[] = [];
-  let dirty = " M old.ts\n";
+  let dirty = " M old.ts\0";
   on("tool.call", (_$, e) => {
     if (e.tool === "Bash") ran.push(e.command);
     if (e.tool !== "AskUserQuestion") return {result: "ok"} as never;
@@ -55,7 +66,7 @@ test("stage-guard asks before git add -A sweeps in another session's file", asyn
   });
   await $.session.start({cwd: ROOT, isInteractive: true, surface: null});
   await $.tool.call({content: "x", file_path: `${ROOT}/new.ts`, tool: "Write"});
-  dirty = " M old.ts\n?? new.ts\n";
+  dirty = " M old.ts\0?? new.ts\0";
   const declined = await $.tool.call({command: "git add -A", tool: "Bash"});
   await $.tool.call({command: "git add new.ts", tool: "Bash"});
   expect(asked.length).toBe(1);
@@ -80,7 +91,7 @@ test("stage-guard asks in a repo first seen at the sweep", async ($, on) => {
   on("process.run", (_$, e) => {
     const stdout = e.argv.includes("rev-parse")
       ? `${ROOT}\n`
-      : " M old.ts\n?? new.ts\n";
+      : " M old.ts\0?? new.ts\0";
     return {value: {exitCode: 0, stderr: "", stdout}} as never;
   });
   await $.tool.call({content: "x", file_path: `${ROOT}/new.ts`, tool: "Write"});
@@ -108,7 +119,7 @@ test(
     on("session.cwd", () => ({value: ROOT}) as never);
     on("process.run", (_$, e) => {
       const top = e.argv.includes("rev-parse");
-      const stdout = top ? `${ROOT}\n` : " M old.ts\n";
+      const stdout = top ? `${ROOT}\n` : " M old.ts\0";
       return {value: {exitCode: 0, stderr: "", stdout}} as never;
     });
     on("turn.complete", () => ({text: ""}) as never);

@@ -18,7 +18,7 @@ const run = (argv: readonly string[]) => {
     (r) => !paths.length || paths.some((p) => p === "." || r.endsWith(p)),
   );
   if (argv.includes("--untracked-files=all")) rows.push("?? tmp.log");
-  return Promise.resolve({exitCode: 0, stdout: `${rows.join("\n")}\n`});
+  return Promise.resolve({exitCode: 0, stdout: `${rows.join("\0")}\0`});
 };
 
 test("git-preview lists the files a destructive git command would touch", async () => {
@@ -32,7 +32,7 @@ test("git-preview lists the files a destructive git command would touch", async 
 
 test("git-preview names a renamed file by its new path", async () => {
   const renamed = () =>
-    Promise.resolve({exitCode: 0, stdout: "R  old.ts -> new.ts\n"});
+    Promise.resolve({exitCode: 0, stdout: "R  new.ts\0old.ts\0"});
   expect(await previewFiles("git reset --hard", CWD, renamed)).toEqual([
     "new.ts",
   ]);

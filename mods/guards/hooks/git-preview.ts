@@ -113,6 +113,7 @@ const filesFor = async (run: Run, step: Step, cwd: string) => {
     ...base,
     "status",
     "--porcelain=v1",
+    "-z",
     step.untracked ? "--untracked-files=all" : "--untracked-files=no",
     "--",
     ...step.paths,

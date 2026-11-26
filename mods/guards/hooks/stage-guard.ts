@@ -30,12 +30,11 @@ export const dirtyFiles = async (run: Run, dir: string) => {
   const root = slash(top.stdout.trim());
   const status = await run([
     "git",
-    "-c",
-    "core.quotePath=false",
     "-C",
     root,
     "status",
     "--porcelain=v1",
+    "-z",
     "--untracked-files=all",
   ]);
   if (status.exitCode !== 0) return null;
