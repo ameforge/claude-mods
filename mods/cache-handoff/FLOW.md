@@ -2,7 +2,7 @@
 
 How the mod behaves across one idle gap on the main session, with `coldAction` at its default, `new`. Times count from the end of the last turn and assume the 1h cache tier.
 
-Status: 0.4.6 is implemented in `hooks/register.ts` and passes its mock tests.
+Status: 0.4.6 is implemented in `hooks/register.ts`, with the transcript naming in `hooks/naming.ts`, and passes its mock tests.
 
 Live checks:
 
@@ -96,18 +96,18 @@ flowchart TD
 
 ## What each step touches
 
-| Step                                            | Mod API                                                    | External                                                                                         |
-| ----------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Arm and track idle                              | `turn.complete`, `turn.start` hooks, `$.clock.every`       | none                                                                                             |
-| Context threshold                               | `$.session.usage()`                                        | none                                                                                             |
+| Step                                            | Mod API                                                    | External                                                                                                                                      |
+| ----------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Arm and track idle                              | `turn.complete`, `turn.start` hooks, `$.clock.every`       | none                                                                                                                                          |
+| Context threshold                               | `$.session.usage()`                                        | none                                                                                                                                          |
 | Find cache tier, at turn end and again at [54m] | `$.process.run(['rg', '-n', '-o', ...])`, else `$.fs.read` | session transcript `.jsonl`, its path from `classic.Stop` or derived from the cwd and session id under `CLAUDE_CONFIG_DIR` (else `~/.claude`) |
-| Write handoff                                   | `$.model.fork`                                             | none                                                                                             |
-| Keep handoff                                    | `$.store`                                                  | none, local to Claude Code                                                                       |
-| Read old name                                   | `$.process.run(['rg', ...])`, else `$.fs.read`             | transcript `custom-title` rows                                                                   |
-| New conversation                                | `$.command.run` for `clear` and `rename`                   | none                                                                                             |
-| Carry the handoff                               | `prompt.submit` hook, typed prompts only                   | none                                                                                             |
-| Command                                         | `$.command.register`, `command.run` hook                   | none                                                                                             |
-| Reminder                                        | `$.ui.status`                                              | none                                                                                             |
+| Write handoff                                   | `$.model.fork`                                             | none                                                                                                                                          |
+| Keep handoff                                    | `$.store`                                                  | none, local to Claude Code                                                                                                                    |
+| Read old name                                   | `$.process.run(['rg', ...])`, else `$.fs.read`             | transcript `custom-title` rows                                                                                                                |
+| New conversation                                | `$.command.run` for `clear` and `rename`                   | none                                                                                                                                          |
+| Carry the handoff                               | `prompt.submit` hook, typed prompts only                   | none                                                                                                                                          |
+| Command                                         | `$.command.register`, `command.run` hook                   | none                                                                                                                                          |
+| Reminder                                        | `$.ui.status`                                              | none                                                                                                                                          |
 
 ## Limits
 
