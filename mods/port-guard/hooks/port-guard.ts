@@ -33,7 +33,7 @@ const DEFAULTS: ReadonlyArray<readonly [RegExp, number]> = [
   [/\brails\s+s(?:erver)?\b/, 3000],
   [/\buvicorn\b/, 8000],
   [/\bflask\s+run\b/, 5000],
-  [/\bpython3?\s+-m\s+http\.server\b/, 8000],
+  [/\bhttp\.server\b/, 8000],
   [/\bphp\s+-S\b/, 8000],
   [/\bhugo\s+server\b/, 1313],
   [/\bjekyll\s+serve\b/, 4000],
@@ -47,8 +47,15 @@ const explicitPort = (text: string) => {
   return m ? Number(m[1]) : undefined;
 };
 
-const defaultPort = (text: string) =>
-  DEFAULTS.find(([re]) => re.test(text))?.[1];
+const defaultPort = (text: string, atStart = false) =>
+  DEFAULTS.find(([re]) => {
+    const m = re.exec(text);
+    return m !== null && (!atStart || m.index === 0);
+  })?.[1];
+
+// Settings and a runner before the tool: PORT=1 npx vite, uv run uvicorn, python -m http.server.
+const LAUNCHER =
+  /^(?:\w+=\S*\s+)*(?:(?:npx|pnpx|bunx|uvx)(?:\s+-\S+)*\s+|(?:npm|pnpm|yarn|bun|uv|poetry|pipenv|bundle)\s+(?:exec|dlx|x|run)\s+(?:--\s+)?|(?:pnpm|yarn)\s+|python3?\s+-m\s+)?(?:\S*[\\/])?/;
 
 export const portOf = (text: string) => explicitPort(text) ?? defaultPort(text);
 
@@ -67,7 +74,8 @@ export const devLaunches = (command: string, cwd: string): DevLaunch[] => {
     // Quoted text is handed to a program (a commit message, an echo), not run.
     const run = segment.replace(/(["'])(?:\\.|(?!\1)[\s\S])*\1/g, "''");
     const script = SCRIPT_RUN.exec(run)?.[1];
-    const fallback = defaultPort(run);
+    // The tool must be the command, so pnpm add vite or cd vite is no launch.
+    const fallback = defaultPort(run.trim().replace(LAUNCHER, ""), true);
     if (script === undefined && fallback === undefined) continue;
     const port = explicitPort(run) ?? fallback;
     launches.push(port !== undefined ? {dir, port} : {dir, script});

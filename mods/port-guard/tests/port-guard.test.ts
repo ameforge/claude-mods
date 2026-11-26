@@ -18,10 +18,20 @@ test("port-guard finds dev launches, their folder and port", () => {
     {dir: CWD, port: 9000},
   ]);
   expect(devLaunches("npx vite", CWD)).toEqual([{dir: CWD, port: 5173}]);
+  expect(devLaunches("uv run uvicorn app:main", CWD)).toEqual([
+    {dir: CWD, port: 8000},
+  ]);
+  expect(devLaunches("./node_modules/.bin/vite", CWD)).toEqual([
+    {dir: CWD, port: 5173},
+  ]);
   // Not launches: another program's -p, quoted text, the bypass.
   expect(devLaunches("ssh -p 2222 host", CWD)).toEqual([]);
   expect(devLaunches('git commit -m "fix next dev"', CWD)).toEqual([]);
   expect(devLaunches("pnpm build", CWD)).toEqual([]);
+  // A tool named as an argument is no launch.
+  expect(devLaunches("pnpm add -D vite", CWD)).toEqual([]);
+  expect(devLaunches("cd vite", CWD)).toEqual([]);
+  expect(devLaunches("pip install uvicorn", CWD)).toEqual([]);
   expect(devLaunches("pnpm dev # allow-dev-port", CWD)).toEqual([]);
 });
 

@@ -10,6 +10,8 @@ Before a Bash or PowerShell command that launches a dev server runs (`npm run de
 2. Else the port in the `package.json` script it runs.
 3. Else the tool's default port, such as 5173 for vite or 3000 for next.
 
+The tool has to be the command itself, optionally behind settings or a runner such as `PORT=5174`, `npx`, `pnpm exec` or `uv run`, so `pnpm add vite` or `cd vite` is not a launch.
+
 When that port is already listened on, the launch is denied and the reason names the process and its pid, so the agent reuses the server, stops it, or picks another port. A `cd` before the launch is followed.
 
 To start another server anyway, the agent appends `# allow-dev-port` to the command after you confirm.
