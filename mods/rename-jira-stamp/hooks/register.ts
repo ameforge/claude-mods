@@ -15,7 +15,7 @@ const homeDir = async ($: EngineInterface) => {
 // Derived the way Claude Code names its project folders: classic.Stop, which
 // carries the path, does not reach a plugin an organization's settings skip.
 const transcriptPath = async ($: EngineInterface) => {
-  const project = (await $.session.cwd()).replace(/[^a-zA-Z0-9]/g, "-");
+  const project = (await $.session.root()).replace(/[^a-zA-Z0-9]/g, "-");
   const configDir =
     (await $.env.get("CLAUDE_CONFIG_DIR")) ?? `${await homeDir($)}/.claude`;
   return `${configDir}/projects/${project}/${await $.session.id()}.jsonl`;

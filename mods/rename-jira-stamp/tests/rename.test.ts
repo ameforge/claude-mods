@@ -40,7 +40,8 @@ const engine = (on: On, options: EngineOptions = {}) => {
     return {value: {command: e.name}};
   });
   on("session.id", () => ({value: "session-1"}));
-  on("session.cwd", () => ({value: "D:/ws/demo"}));
+  on("session.cwd", () => ({value: "D:/ws/demo/.wt/ABC-1"}));
+  on("session.root", () => ({value: "D:/ws/demo"}));
   on("env.get", (_$, e) => ({value: options.env?.[e.name]}));
   on("process.run", (_$, e) => {
     if (
