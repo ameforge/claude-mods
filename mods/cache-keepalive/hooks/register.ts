@@ -73,7 +73,7 @@ const transcriptPath = async ($: EngineInterface) => {
   const home =
     (await $.env.get("USERPROFILE")) ?? (await $.env.get("HOME")) ?? "";
   const configDir = (await $.env.get("CLAUDE_CONFIG_DIR")) ?? `${home}/.claude`;
-  const project = (await $.session.cwd()).replace(/[^a-zA-Z0-9]/g, "-");
+  const project = (await $.session.root()).replace(/[^a-zA-Z0-9]/g, "-");
   return `${configDir}/projects/${project}/${await $.session.id()}.jsonl`;
 };
 
