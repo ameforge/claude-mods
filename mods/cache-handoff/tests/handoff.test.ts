@@ -106,7 +106,8 @@ const engine = (
     return {value: {command: e.name}};
   });
   on("session.id", () => ({value: sessionId}));
-  on("session.cwd", () => ({value: "D:/ws/demo"}));
+  on("session.cwd", () => ({value: "D:/ws/demo/.wt/ABC-1"}));
+  on("session.root", () => ({value: "D:/ws/demo"}));
   on("session.usage", () => ({
     value: {
       context: {tokens: contextTokens, window: 1_000_000},

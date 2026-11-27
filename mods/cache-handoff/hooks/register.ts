@@ -149,7 +149,7 @@ const homeDir = async ($: EngineInterface) => {
 // Code names its project folders.
 const transcriptPath = async ($: EngineInterface) => {
   if (idle.transcriptPath !== undefined) return idle.transcriptPath;
-  const project = (await $.session.cwd()).replace(/[^a-zA-Z0-9]/g, "-");
+  const project = (await $.session.root()).replace(/[^a-zA-Z0-9]/g, "-");
   const configDir =
     (await $.env.get("CLAUDE_CONFIG_DIR")) ?? `${await homeDir($)}/.claude`;
   return `${configDir}/projects/${project}/${await $.session.id()}.jsonl`;
